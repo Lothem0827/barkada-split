@@ -1,0 +1,50 @@
+"use client"
+
+import { Button } from "@/components/ui/button"
+import { initial } from "@/lib/types"
+import { cn } from "cn"
+
+export function MemberChipRow({
+  members,
+  selected,
+  onToggle,
+  disabled,
+  label,
+  className,
+}: {
+  members: { id: string; name: string }[]
+  selected: string[]
+  onToggle: (id: string) => void
+  disabled?: (id: string) => boolean
+  label?: (member: { id: string; name: string }) => string
+  className?: string
+}) {
+  return (
+    <div className={cn("no-scrollbar -mx-4 flex min-w-0 gap-2 overflow-x-auto overscroll-x-contain snap-x snap-mandatory px-4", className)}>
+      {members.map((member) => {
+        const on = selected.includes(member.id)
+        return (
+          <Button
+            key={member.id}
+            type="button"
+            variant={on ? "default" : "outline"}
+            aria-pressed={on}
+            disabled={disabled?.(member.id) ?? false}
+            className="min-h-[42px] shrink-0 snap-start gap-2 px-3.5"
+            onClick={() => onToggle(member.id)}
+          >
+            <span
+              className={cn(
+                "grid size-6 place-items-center rounded-full text-xs font-bold",
+                on ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-foreground"
+              )}
+            >
+              {initial(member.name)}
+            </span>
+            {label ? label(member) : member.name}
+          </Button>
+        )
+      })}
+    </div>
+  )
+}
