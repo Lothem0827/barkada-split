@@ -251,6 +251,11 @@ export type EmergencyTakeoverPayload = {
 }
 
 const lakadChannels = new Map<string, RealtimeChannel>()
+const lakadStops = new Map<string, () => void>()
+
+function retryDelay(attempt: number) {
+  return Math.min(8000, 1000 * 2 ** attempt)
+}
 
 function isEmergencyTakeoverPayload(value: unknown): value is EmergencyTakeoverPayload {
   if (!value || typeof value !== "object") return false
@@ -272,34 +277,129 @@ function isEmergencyTakeoverPayload(value: unknown): value is EmergencyTakeoverP
 export function subscribeLakad(
   tripId: string,
   onChange: (trip: Trip) => void,
-  onEmergency?: (payload: EmergencyTakeoverPayload) => void
+  onEmergency?: (payload: EmergencyTakeoverPayload) => void,
+  onSubscribed?: () => void
 ) {
   const supabase = getSupabase()
   if (!supabase) return () => {}
-  const previous = lakadChannels.get(tripId)
-  if (previous) {
-    lakadChannels.delete(tripId)
-    void supabase.removeChannel(previous)
+  lakadStops.get(tripId)?.()
+
+  let stopped = false
+  let epoch = 0
+  let attempt = 0
+  let channel: RealtimeChannel | null = null
+  let retryTimer: ReturnType<typeof setTimeout> | null = null
+  let joinedToken = ""
+  let inflightToken = ""
+
+  const scheduleRetry = (token: string) => {
+    if (stopped || retryTimer) return
+    const delay = retryDelay(attempt)
+    attempt += 1
+    retryTimer = setTimeout(() => {
+      retryTimer = null
+      void join(token)
+    }, delay)
   }
-  const channel = supabase
-    .channel("lakad-" + tripId, { config: { broadcast: { self: false } } })
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "lakads", filter: "id=eq." + tripId },
-      (payload) => {
-        const row = payload.new as { payload?: Trip } | null
-        if (row?.payload) onChange(row.payload)
+
+  const join = async (token: string) => {
+    if (stopped || !token) return
+    if ((token === joinedToken && channel) || token === inflightToken) return
+    inflightToken = token
+    if (retryTimer) {
+      clearTimeout(retryTimer)
+      retryTimer = null
+    }
+    try {
+      await supabase.realtime.setAuth(token)
+    } catch {
+      if (inflightToken === token) inflightToken = ""
+      scheduleRetry(token)
+      return
+    }
+    if (stopped || inflightToken !== token) return
+
+    const ticket = ++epoch
+    const previous = channel
+    channel = null
+    joinedToken = ""
+    if (previous && lakadChannels.get(tripId) === previous) lakadChannels.delete(tripId)
+    if (previous) await supabase.removeChannel(previous).catch(() => {})
+    if (stopped || ticket !== epoch) {
+      if (inflightToken === token) inflightToken = ""
+      return
+    }
+
+    const next = supabase
+      .channel("lakad-" + tripId, { config: { broadcast: { self: false } } })
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "lakads", filter: "id=eq." + tripId },
+        (payload) => {
+          const row = payload.new as { payload?: Trip } | null
+          if (row?.payload) onChange(row.payload)
+        }
+      )
+      .on("broadcast", { event: "emergency_takeover" }, (msg) => {
+        if (isEmergencyTakeoverPayload(msg.payload)) onEmergency?.(msg.payload)
+      })
+    channel = next
+    lakadChannels.set(tripId, next)
+    next.subscribe((status) => {
+      if (stopped || ticket !== epoch) return
+      if (status === "SUBSCRIBED") {
+        attempt = 0
+        joinedToken = token
+        if (inflightToken === token) inflightToken = ""
+        onSubscribed?.()
+        return
       }
-    )
-    .on("broadcast", { event: "emergency_takeover" }, (msg) => {
-      if (isEmergencyTakeoverPayload(msg.payload)) onEmergency?.(msg.payload)
+      if (status !== "CHANNEL_ERROR" && status !== "TIMED_OUT" && status !== "CLOSED") return
+      if (retryTimer) return
+      joinedToken = ""
+      if (inflightToken === token) inflightToken = ""
+      if (channel === next) channel = null
+      if (lakadChannels.get(tripId) === next) lakadChannels.delete(tripId)
+      scheduleRetry(token)
+      void supabase.removeChannel(next)
     })
-    .subscribe()
-  lakadChannels.set(tripId, channel)
-  return () => {
-    if (lakadChannels.get(tripId) === channel) lakadChannels.delete(tripId)
-    void supabase.removeChannel(channel)
   }
+
+  const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+    if (stopped) return
+    if (event !== "INITIAL_SESSION" && event !== "SIGNED_IN" && event !== "TOKEN_REFRESHED") return
+    const token = session?.access_token
+    if (!token) return
+    setTimeout(() => {
+      if (!stopped) void join(token)
+    }, 0)
+  })
+
+  void (async () => {
+    const { data } = await supabase.auth.getSession()
+    if (stopped) return
+    const token = data.session?.access_token
+    if (token) void join(token)
+  })()
+
+  const stop = () => {
+    if (stopped) return
+    stopped = true
+    epoch += 1
+    inflightToken = ""
+    joinedToken = ""
+    if (retryTimer) clearTimeout(retryTimer)
+    authListener.subscription.unsubscribe()
+    const current = channel
+    channel = null
+    if (lakadStops.get(tripId) === stop) lakadStops.delete(tripId)
+    if (current && lakadChannels.get(tripId) === current) {
+      lakadChannels.delete(tripId)
+      void supabase.removeChannel(current)
+    }
+  }
+  lakadStops.set(tripId, stop)
+  return stop
 }
 
 export async function broadcastEmergencyTakeover(tripId: string, payload: EmergencyTakeoverPayload) {

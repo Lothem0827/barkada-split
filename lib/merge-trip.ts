@@ -4,11 +4,13 @@ export function isSeedTripId(id: string) {
   return (SEED_TRIP_IDS as readonly string[]).includes(id)
 }
 
-function stamp(row: { ts?: number; edits?: { ts?: number }[] }) {
+function stamp(row: { ts?: number; edits?: { ts?: number }[]; pendingEdit?: { ts?: number } | null }) {
   let value = row.ts || 0
   for (const edit of row.edits || []) {
     if ((edit.ts || 0) > value) value = edit.ts || 0
   }
+  const proposed = row.pendingEdit?.ts || 0
+  if (proposed > value) value = proposed
   return value
 }
 

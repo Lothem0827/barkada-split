@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useTheme } from "next-themes"
 import {
@@ -10,28 +10,23 @@ import {
   MoonIcon,
   SmartphoneIcon,
   SunIcon,
-  XIcon,
 } from "lucide-react"
 
-import { Badge } from "@/components/ui/badge"
+import {
+  BarkadaMemberInput,
+  type BarkadaMemberInputHandle,
+} from "@/components/barkada/barkada-member-input"
 import { Button } from "@/components/ui/button"
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { personaLabel, t, takenNicknameMessage, type CopyKey } from "@/lib/i18n"
+import { personaLabel, t, type CopyKey } from "@/lib/i18n"
 import { markJustCreated, parseJoinCodeFromInput } from "@/lib/join-code"
 import { sampleReminder } from "@/lib/reminders"
 import { useBarkada, type OnboardDraft } from "@/lib/store"
-import {
-  AVATARS,
-  PERSONAS,
-  findTakenName,
-  nameKey,
-  type Persona,
-  type RoundTo,
-} from "@/lib/types"
+import { AVATARS, PERSONAS, type Persona, type RoundTo } from "@/lib/types"
 
 type Step = "welcome" | "profile" | "path" | "create" | "join"
 
@@ -61,13 +56,13 @@ export function OnboardingView() {
   const [slide, setSlide] = useState(0)
   const [draft, setDraft] = useState<OnboardDraft>(emptyDraft)
   const [tripName, setTripName] = useState("")
-  const [friendName, setFriendName] = useState("")
   const [friends, setFriends] = useState<string[]>([])
+  const [friendDraft, setFriendDraft] = useState("")
   const [openMode, setOpenMode] = useState(false)
   const [roundTo, setRoundTo] = useState<RoundTo>(0)
   const [code, setCode] = useState("")
   const [error, setError] = useState("")
-  const [friendError, setFriendError] = useState("")
+  const rosterRef = useRef<BarkadaMemberInputHandle>(null)
 
   function notify(result: { ok: boolean; message: string; tripId?: string }) {
     if (!result.ok) {
@@ -83,26 +78,11 @@ export function OnboardingView() {
 
   function go(next: Step) {
     setError("")
-    setFriendError("")
     setStep(next)
   }
 
-  function addFriend() {
-    const name = friendName.trim().slice(0, 40)
-    if (!name) return
-    const you = draft.name.trim()
-    const taken = findTakenName([you, ...friends], name)
-    if (taken) {
-      setFriendError(takenNicknameMessage(lang, taken, nameKey(taken) === nameKey(you)))
-      return
-    }
-    setFriendError("")
-    setFriends((current) => [...current, name])
-    setFriendName("")
-  }
-
   const nickReady = !!draft.name.trim()
-  const rosterReady = friends.length > 0
+  const rosterReady = friends.length > 0 || !!friendDraft.trim()
 
   return (
     <div className="min-h-dvh overflow-x-hidden bg-muted">
@@ -319,67 +299,21 @@ export function OnboardingView() {
                     ))}
                   </div>
                 </Field>
-                <Field data-invalid={friendError ? true : undefined}>
+                <Field>
                   <FieldLabel htmlFor="ob-friend">{t(lang, "obRoster")}</FieldLabel>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge
-                      className={`h-11 rounded-full px-3 text-sm ${
-                        friendError && nameKey(draft.name) === nameKey(friendName)
-                          ? "overflow-visible ring-2 ring-destructive ring-offset-2 ring-offset-background"
-                          : ""
-                      }`}
-                    >
-                      {draft.avatar} {draft.name.trim() || t(lang, "obNickPh")} · {t(lang, "obYouTreas")}
-                    </Badge>
-                    {friends.map((friend) => (
-                      <Badge
-                        key={friend}
-                        variant="secondary"
-                        className={`h-11 gap-1 rounded-full px-3 text-sm ${
-                          friendError && nameKey(friend) === nameKey(friendName)
-                            ? "overflow-visible ring-2 ring-destructive ring-offset-2 ring-offset-background"
-                            : ""
-                        }`}
-                      >
-                        {friend}
-                        <button
-                          type="button"
-                          className="grid size-11 place-items-center"
-                          aria-label={t(lang, "del")}
-                          onClick={() => setFriends((current) => current.filter((item) => item !== friend))}
-                        >
-                          <XIcon className="size-3.5" />
-                        </button>
-                      </Badge>
-                    ))}
-                  </div>
-                  <FieldDescription>{t(lang, "obRosterHint")}</FieldDescription>
-                  <div className="flex gap-2">
-                    <Input
-                      id="ob-friend"
-                      className="min-w-0 flex-1"
-                      enterKeyHint="done"
-                      maxLength={40}
-                      value={friendName}
-                      placeholder={t(lang, "obAddFriend")}
-                      aria-invalid={friendError ? true : undefined}
-                      aria-describedby={friendError ? "ob-friend-error" : undefined}
-                      onChange={(event) => {
-                        setFriendName(event.target.value)
-                        if (friendError) setFriendError("")
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault()
-                          addFriend()
-                        }
-                      }}
-                    />
-                    <Button type="button" size="touch" className="shrink-0" variant="outline" onClick={addFriend}>
-                      {t(lang, "obAddChip")}
-                    </Button>
-                  </div>
-                  {friendError ? <FieldError id="ob-friend-error">{friendError}</FieldError> : null}
+                  <BarkadaMemberInput
+                    ref={rosterRef}
+                    inputId="ob-friend"
+                    lang={lang}
+                    names={friends}
+                    onChange={setFriends}
+                    onDraftChange={setFriendDraft}
+                    self={{
+                      name: draft.name,
+                      avatar: draft.avatar,
+                      label: t(lang, "obYouTreas"),
+                    }}
+                  />
                 </Field>
                 <Field>
                   <FieldLabel>{t(lang, "obRules")}</FieldLabel>
@@ -470,7 +404,10 @@ export function OnboardingView() {
               <Button
                 size="cta"
                 disabled={!tripName.trim() || !rosterReady}
-                onClick={() => notify(store.startLakad(tripName, friends, openMode, roundTo, draft))}
+                onClick={() => {
+                  const extra = rosterRef.current?.commitDraft() ?? friends
+                  notify(store.startLakad(tripName, extra, openMode, roundTo, draft))
+                }}
               >
                 {t(lang, "obStart")}
               </Button>

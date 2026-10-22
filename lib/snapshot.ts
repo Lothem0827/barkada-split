@@ -6,6 +6,7 @@ import {
   uiLang,
   type EmergencyLogEntry,
   type Expense,
+  type ExpenseEditProposal,
   type Item,
   type Lang,
   type Member,
@@ -100,6 +101,52 @@ function idList(value: unknown, max: number) {
   return out
 }
 
+function cleanText(value: unknown, max: number) {
+  if (typeof value !== "string") return null
+  return value.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, max)
+}
+
+function readProposal(raw: unknown, has: (id: string) => boolean): ExpenseEditProposal | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
+  const row = raw as Record<string, unknown>
+  const methods: SplitMethod[] = ["even", "item", "exclude", "libre"]
+  const title = cleanText(row.title, 80)
+  if (!title) return null
+  if (!Number.isSafeInteger(row.amount) || (row.amount as number) < 0 || (row.amount as number) > 1e11) return null
+  if (!methods.includes(row.method as SplitMethod)) return null
+  if (typeof row.payer !== "string" || !has(row.payer)) return null
+  if (typeof row.editedBy !== "string" || !/^[A-Za-z0-9_-]{1,40}$/.test(row.editedBy)) return null
+  if (!Number.isSafeInteger(row.ts) || (row.ts as number) < 0) return null
+  if (row.items != null && !Array.isArray(row.items)) return null
+  if (Array.isArray(row.items) && row.items.length > 200) return null
+  const items: Item[] = []
+  for (const item of Array.isArray(row.items) ? row.items : []) {
+    if (!item || typeof item !== "object") return null
+    const it = item as Record<string, unknown>
+    const name = cleanText(it.name, 60)
+    if (name == null) return null
+    if (!Number.isSafeInteger(it.price) || (it.price as number) < 0) return null
+    items.push({
+      name: name || "Item",
+      price: it.price as number,
+      eaters: Array.isArray(it.eaters)
+        ? it.eaters.filter((id): id is string => typeof id === "string" && has(id))
+        : [],
+    })
+  }
+  return {
+    title,
+    amount: row.amount as number,
+    sc: !!row.sc,
+    payer: row.payer,
+    method: row.method as SplitMethod,
+    ex: Array.isArray(row.ex) ? row.ex.filter((id): id is string => typeof id === "string" && has(id)) : [],
+    items,
+    editedBy: row.editedBy,
+    ts: row.ts as number,
+  }
+}
+
 export function sanitizeTrip(raw: unknown): Trip {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) bad("not a trip")
   const o = raw as Record<string, unknown>
@@ -168,10 +215,20 @@ export function sanitizeTrip(raw: unknown): Trip {
       ),
       items,
       addedBy: typeof expense.addedBy === "string" && has(expense.addedBy) ? expense.addedBy : treasurer,
-      status: expense.status === "pending" ? "pending" : "approved",
+      status: expense.status === "pending" ? "pending" : expense.status === "rejected" ? "rejected" : "approved",
       ts: int(expense.ts, "expense time"),
     }
     if (out.amount > 1e11) bad("amount too large")
+    if (out.status === "rejected" && typeof expense.rejectionReason === "string") {
+      const reason = str(expense.rejectionReason, 80, "rejection reason", true).trim()
+      if (reason) out.rejectionReason = reason
+    }
+    if (typeof expense.auditNote === "string") {
+      const note = str(expense.auditNote, 160, "audit note", true).trim()
+      if (note) out.auditNote = note
+    }
+    const proposal = readProposal(expense.pendingEdit, has)
+    if (proposal) out.pendingEdit = proposal
     if (Array.isArray(expense.edits)) {
       out.edits = expense.edits.slice(0, 50).map((note) => {
         if (!note || typeof note !== "object") bad("edit note")

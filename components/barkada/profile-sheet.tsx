@@ -140,9 +140,9 @@ export function ViewAsBar({ className }: { className?: string }) {
   )
 }
 
-export function TimeTravelBar({ className }: { className?: string }) {
+function TimeTravelBar({ className }: { className?: string }) {
   const { state, timeTravel } = useBarkada()
-  const { lang, offset } = state
+  const { lang } = state
 
   function run(days: number) {
     const result = timeTravel(days)
@@ -151,17 +151,13 @@ export function TimeTravelBar({ className }: { className?: string }) {
 
   return (
     <div className={`flex flex-wrap items-center gap-2 ${className ?? ""}`}>
-      <span className="text-sm font-medium text-muted-foreground">
-        {t(lang, "demoTime")}
-        {offset ? ` · ${offset > 0 ? "+" : ""}${offset}d` : ""}
-      </span>
-      <Button variant="outline" className="min-h-[40px] px-3.5" onClick={() => run(-1)}>
+      <Button variant="outline" className="min-h-[40px] flex-1 px-3.5" onClick={() => run(-1)}>
         {t(lang, "minus1d")}
       </Button>
-      <Button variant="outline" className="min-h-[40px] px-3.5" onClick={() => run(3)}>
+      <Button variant="outline" className="min-h-[40px] flex-1 px-3.5" onClick={() => run(3)}>
         {t(lang, "plus3d")}
       </Button>
-      <Button variant="ghost" className="min-h-[40px] px-3.5" onClick={() => run(0)}>
+      <Button variant="ghost" className="min-h-[40px] flex-1 px-3.5" onClick={() => run(0)}>
         {t(lang, "timeReset")}
       </Button>
     </div>
@@ -428,11 +424,17 @@ export function ProfileSheet({ open, onOpenChange }: { open: boolean; onOpenChan
               </div>
               <FieldDescription>{sampleReminder(persona, lang).split("\n")[0]}</FieldDescription>
             </Field>
+            <Field>
+              <FieldLabel>
+                {t(lang, "demoTime")}
+                {state.offset ? ` · ${state.offset > 0 ? "+" : ""}${state.offset}d` : ""}
+              </FieldLabel>
+              <TimeTravelBar />
+            </Field>
           </section>
 
           <section className="flex flex-col gap-3">
             <h3 className="font-heading text-sm font-semibold">{t(lang, "testSection")}</h3>
-            {showTestTools ? <TimeTravelBar /> : null}
             {showTestTools ? <ViewAsBar /> : null}
             <ArmButton
               className="min-h-[42px] w-full"

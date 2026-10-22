@@ -27,6 +27,34 @@ export function canConfirmPayment(as: string, trip: Trip, payment: Payment) {
   return payment.status === "sent" && (as === payment.to || as === trip.treasurer)
 }
 
+export type HatianViewerRole = "debtor" | "creditor" | "treasurer_overseeing" | "uninvolved"
+
+export function hatianViewerRole(as: string, treasurerId: string, from: string, to: string): HatianViewerRole {
+  if (as === from) return "debtor"
+  if (as === to) return "creditor"
+  if (as === treasurerId) return "treasurer_overseeing"
+  return "uninvolved"
+}
+
+export function canCopyTransfer(as: string, treasurerId: string, from: string, to: string) {
+  return hatianViewerRole(as, treasurerId, from, to) === "debtor"
+}
+
+export function canNudgeTransfer(as: string, treasurerId: string, from: string, to: string) {
+  const role = hatianViewerRole(as, treasurerId, from, to)
+  return role === "creditor" || role === "treasurer_overseeing"
+}
+
+export function canMarkTransferSent(as: string, treasurerId: string, from: string, to: string) {
+  const role = hatianViewerRole(as, treasurerId, from, to)
+  return role === "debtor" || role === "creditor" || role === "treasurer_overseeing"
+}
+
+export function canConfirmTransfer(as: string, treasurerId: string, from: string, to: string) {
+  const role = hatianViewerRole(as, treasurerId, from, to)
+  return role === "creditor" || role === "treasurer_overseeing"
+}
+
 export function cancelSentPayment(trip: Trip, id: string): Trip {
   return omitPayment(trip, id)
 }

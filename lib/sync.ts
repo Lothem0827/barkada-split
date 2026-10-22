@@ -18,6 +18,8 @@ import {
 import { useBarkadaStore } from "@/lib/store"
 import { appendEmergencyLog, emergencyLogOf, isSeedRoster, memberName, type Trip } from "@/lib/types"
 
+const POLL_MS = 8000
+
 let flushing = false
 let queued = false
 
@@ -156,6 +158,28 @@ export function useSyncEngine() {
     if (!activeId || isSeedTripId(activeId) || !isSupabaseConfigured()) return
     let cancelled = false
     let sawRealtime = false
+    let pulling = false
+    let pullAgain = false
+
+    const pull = async () => {
+      if (cancelled) return
+      if (pulling) {
+        pullAgain = true
+        return
+      }
+      pulling = true
+      try {
+        do {
+          pullAgain = false
+          const remote = await fetchRemoteTrip(activeId)
+          if (cancelled) return
+          if (remote) useBarkadaStore.getState().applyRemoteTrip(remote.payload, false)
+        } while (pullAgain && !cancelled)
+      } finally {
+        pulling = false
+      }
+    }
+
     const unsub = subscribeLakad(
       activeId,
       (remote) => {
@@ -166,6 +190,9 @@ export function useSyncEngine() {
       (payload) => {
         if (cancelled) return
         applyEmergencyBroadcast(activeId, payload)
+      },
+      () => {
+        if (!cancelled) void pull()
       }
     )
     void (async () => {
@@ -173,9 +200,44 @@ export function useSyncEngine() {
       if (cancelled || sawRealtime || !remote) return
       useBarkadaStore.getState().applyRemoteTrip(remote.payload, false)
     })()
+
+    let pollTimer: ReturnType<typeof setInterval> | null = null
+    const stopPoll = () => {
+      if (pollTimer === null) return
+      clearInterval(pollTimer)
+      pollTimer = null
+    }
+    const startPoll = () => {
+      if (pollTimer !== null || document.visibilityState !== "visible") return
+      pollTimer = setInterval(() => {
+        void pull()
+      }, POLL_MS)
+    }
+    const onWake = () => {
+      void pull()
+      startPoll()
+    }
+    const onVisibility = () => {
+      if (document.visibilityState !== "visible") {
+        stopPoll()
+        return
+      }
+      onWake()
+    }
+    document.addEventListener("visibilitychange", onVisibility)
+    window.addEventListener("focus", onWake)
+    window.addEventListener("pageshow", onWake)
+    window.addEventListener("online", onWake)
+    startPoll()
+
     return () => {
       cancelled = true
       unsub()
+      stopPoll()
+      document.removeEventListener("visibilitychange", onVisibility)
+      window.removeEventListener("focus", onWake)
+      window.removeEventListener("pageshow", onWake)
+      window.removeEventListener("online", onWake)
     }
   }, [activeId])
 }

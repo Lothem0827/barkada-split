@@ -60,7 +60,6 @@ const TABS: { id: Tab; icon: typeof HouseIcon; key: "home" | "gastos" | "hatian"
 
 type Confirm =
   | { kind: "delete"; id: string }
-  | { kind: "reject"; id: string }
   | { kind: "handoff"; id: string; name: string }
   | { kind: "reset-lock"; id: string; name: string }
   | { kind: "del-trip" }
@@ -162,7 +161,6 @@ function AppFrame() {
   function runConfirm() {
     if (!confirm) return
     if (confirm.kind === "delete") run(store.deleteExpense(confirm.id))
-    else if (confirm.kind === "reject") run(store.rejectExpense(confirm.id))
     else if (confirm.kind === "handoff") run(store.handoff(confirm.id))
     else if (confirm.kind === "reset-lock") void store.resetSeatLock(confirm.id).then(run)
     else if (confirm.kind === "del-trip") {
@@ -189,7 +187,7 @@ function AppFrame() {
     if (!trip) return
     const expense = trip.expenses.find((item) => item.id === id)
     if (!expense) return
-    setDraft(editExpenseDraft(trip, expense))
+    setDraft(editExpenseDraft(trip, expense, as))
     setExpenseOpen(true)
   }
 
@@ -302,7 +300,11 @@ function AppFrame() {
           />
         ) : null}
 
-        <main className={`flex flex-col gap-4 px-4 py-4 ${trip && tab !== "home" ? "pb-36" : ""}`}>
+        <main
+          className={`flex flex-col gap-4 px-4 py-4 ${
+            tab === "home" || !trip ? "pb-40" : trip ? "pb-36" : ""
+          }`}
+        >
           <TabsContent value="home">
             <HomeView
               onNewTrip={() => setTripOpen(true)}
@@ -316,7 +318,9 @@ function AppFrame() {
                 onEdit={openEdit}
                 onApprove={(id) => run(store.approveExpense(id))}
                 onApproveAll={() => run(store.approveAllPending())}
-                onReject={(id) => run(store.rejectExpense(id))}
+                onReject={(id, reason) => run(store.rejectExpense(id, reason))}
+                onApproveEdit={(id) => run(store.approveEdit(id))}
+                onRejectEdit={(id) => run(store.rejectEdit(id))}
                 onDelete={(id) => run(store.deleteExpense(id))}
                 onInvite={() => openInvite()}
               />
@@ -338,7 +342,7 @@ function AppFrame() {
 
         <TabsList
           variant="line"
-          className="fixed bottom-0 left-1/2 grid h-auto! w-full max-w-[560px] -translate-x-1/2 grid-cols-4 rounded-none border-t bg-background select-none pb-[max(12px,env(safe-area-inset-bottom))]"
+          className="fixed bottom-0 left-1/2 z-30 grid h-auto! w-full max-w-[560px] -translate-x-1/2 grid-cols-4 rounded-none border-t bg-background select-none pb-[max(12px,env(safe-area-inset-bottom))]"
         >
           {TABS.map((item) => {
             const Icon = item.icon
@@ -430,40 +434,30 @@ function AppFrame() {
             <AlertDialogTitle>
               {confirm?.kind === "delete"
                 ? t(lang, "deleteAsk")
-                : confirm?.kind === "reject"
-                  ? t(lang, "rejectAsk")
-                  : confirm?.kind === "handoff"
-                    ? t(lang, "handAsk")
-                    : confirm?.kind === "reset-lock"
-                      ? t(lang, "resetLockAsk")
-                      : t(lang, "delTripAsk")}
+                : confirm?.kind === "handoff"
+                  ? t(lang, "handAsk")
+                  : confirm?.kind === "reset-lock"
+                    ? t(lang, "resetLockAsk")
+                    : t(lang, "delTripAsk")}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirm?.kind === "delete"
                 ? t(lang, "deleteBody")
-                : confirm?.kind === "reject"
-                  ? t(lang, "rejectBody")
-                  : confirm?.kind === "handoff"
-                    ? t(lang, "handBody").replace("{name}", confirm.name)
-                    : confirm?.kind === "reset-lock"
-                      ? t(lang, "resetLockBody").replace("{name}", confirm.name)
-                      : t(lang, "delTripBody")}
+                : confirm?.kind === "handoff"
+                  ? t(lang, "handBody").replace("{name}", confirm.name)
+                  : confirm?.kind === "reset-lock"
+                    ? t(lang, "resetLockBody").replace("{name}", confirm.name)
+                    : t(lang, "delTripBody")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="min-h-[50px]">{t(lang, "cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className="min-h-[50px]"
-              variant={
-                confirm?.kind === "delete" || confirm?.kind === "reject" || confirm?.kind === "del-trip"
-                  ? "destructive"
-                  : "default"
-              }
+              variant={confirm?.kind === "delete" || confirm?.kind === "del-trip" ? "destructive" : "default"}
               onClick={runConfirm}
             >
-              {confirm?.kind === "delete" || confirm?.kind === "reject" || confirm?.kind === "del-trip"
-                ? t(lang, "del")
-                : t(lang, "save")}
+              {confirm?.kind === "delete" || confirm?.kind === "del-trip" ? t(lang, "del") : t(lang, "save")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

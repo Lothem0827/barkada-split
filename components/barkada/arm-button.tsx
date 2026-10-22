@@ -11,18 +11,20 @@ export function ArmButton({
   cancelLabel,
   onConfirm,
   className,
+  variant = "destructive",
 }: {
   label: string
   armedLabel: string
   cancelLabel: string
   onConfirm: () => void
   className?: string
+  variant?: "destructive" | "ghost" | "outline"
 }) {
   const [armed, setArmed] = useState(false)
 
   if (!armed) {
     return (
-      <Button variant="destructive" className={cn("min-h-[40px] px-3.5", className)} onClick={() => setArmed(true)}>
+      <Button variant={variant} className={cn("min-h-[40px] px-3.5", className)} onClick={() => setArmed(true)}>
         {label}
       </Button>
     )

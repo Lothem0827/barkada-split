@@ -3,9 +3,26 @@ import { bindSeat, seatStatus } from "../lib/claim.ts"
 import { balances, distribute, lvl, parsePeso, peso, sharesOf, totalOf, transfers, wrappedStats } from "../lib/calc.ts"
 import { hydrateState } from "../lib/hydrate.ts"
 import { inviteUrl, isJoinCode, makeJoinCode, normalizeJoinCode, parseJoinCodeFromInput } from "../lib/join-code.ts"
+import {
+  commitNames,
+  hasNameSeparator,
+  recentBarkadaNames,
+  splitNameDraft,
+  titleCaseName,
+} from "../lib/member-names.ts"
 import { t, takenNicknameMessage } from "../lib/i18n.ts"
 import { classifyLinkGoogleError, oauthErrorFromUrl } from "../lib/supabase.ts"
-import { applyUndoPayment, canCancelSent, canRevertConfirmed, makeFakeNewsNudge } from "../lib/payments.ts"
+import {
+  applyUndoPayment,
+  canCancelSent,
+  canConfirmTransfer,
+  canCopyTransfer,
+  canMarkTransferSent,
+  canNudgeTransfer,
+  canRevertConfirmed,
+  hatianViewerRole,
+  makeFakeNewsNudge,
+} from "../lib/payments.ts"
 import { fakeNewsReminder, reminder, sampleReminder } from "../lib/reminders.ts"
 import { seed } from "../lib/seed.ts"
 import { flushPayload, hasUnsyncedRows, mergeTrip, shouldClearDirty } from "../lib/merge-trip.ts"
@@ -21,6 +38,7 @@ import {
   findTakenMember,
   findTakenName,
   memberCanRemove,
+  memberName,
   nameKey,
   resolvePairNudges,
   sanitizeProfile,
@@ -311,6 +329,84 @@ function liveExpense(id: string, addedBy: string, ts: number): Expense {
 }
 
 {
+  const approved = {
+    ...liveExpense("e-ok", "mel", 5),
+    title: "Halo-halo",
+    amount: 345000,
+    pendingEdit: {
+      title: "Halo-halo deluxe",
+      amount: 360000,
+      sc: false,
+      payer: "mel",
+      method: "even" as const,
+      ex: [],
+      items: [],
+      editedBy: "mel",
+      ts: 9,
+    },
+  }
+  const rejected = {
+    ...liveExpense("e-no", "carl", 3),
+    amount: 50000,
+    status: "rejected" as const,
+    rejectionReason: "reasonWrong",
+    auditNote: "Returned: reasonWrong",
+  }
+  const trip: Trip = {
+    id: "t-edit",
+    joinCode: "EDIT-26",
+    name: "Edit",
+    treasurer: "carl",
+    gcash: "",
+    open: false,
+    roundTo: 0,
+    members: [
+      { id: "carl", name: "Carl", gcash: "" },
+      { id: "mel", name: "Mel", gcash: "" },
+    ],
+    expenses: [approved, rejected],
+    payments: [],
+  }
+  const onlyApproved: Trip = { ...trip, expenses: [{ ...approved, pendingEdit: null }] }
+  assert.deepEqual(balances(trip), balances(onlyApproved))
+  assert.equal(wrappedStats(trip, 10).total, wrappedStats(onlyApproved, 10).total)
+  assert.equal(wrappedStats(trip, 10).count, 1)
+  assert.equal(totalOf(trip.expenses[0]!), 345000)
+
+  const snap = importTrip(exportTrip(trip))
+  const kept = snap.expenses.find((expense) => expense.id === "e-ok")
+  const returned = snap.expenses.find((expense) => expense.id === "e-no")
+  assert.equal(kept?.status, "approved")
+  assert.equal(kept?.amount, 345000)
+  assert.equal(kept?.pendingEdit?.amount, 360000)
+  assert.equal(kept?.pendingEdit?.title, "Halo-halo deluxe")
+  assert.equal(returned?.status, "rejected")
+  assert.equal(returned?.rejectionReason, "reasonWrong")
+  assert.equal(returned?.auditNote, "Returned: reasonWrong")
+  assert.deepEqual(balances(snap), balances(trip))
+
+  const dirty = sanitizeTrip({
+    ...trip,
+    expenses: [{ ...liveExpense("e-ok", "mel", 5), pendingEdit: { title: 1 } }],
+  })
+  assert.equal(dirty.expenses[0]?.pendingEdit ?? null, null)
+  assert.equal(dirty.expenses[0]?.status, "approved")
+
+  const remote = { ...trip, expenses: [{ ...liveExpense("e-ok", "mel", 5), amount: 345000 }] }
+  const proposed = mergeTrip({ ...trip, expenses: [approved] }, remote, true)
+  assert.equal(proposed.expenses[0]?.pendingEdit?.amount, 360000)
+  const cleared = {
+    ...approved,
+    pendingEdit: null,
+    edits: [{ ts: 20, by: "carl", note: "Edit rejected — kept original approved bill" }],
+  }
+  const keptOriginal = mergeTrip({ ...trip, expenses: [cleared] }, { ...trip, expenses: [approved] }, true)
+  assert.equal(keptOriginal.expenses[0]?.pendingEdit ?? null, null)
+  assert.equal(keptOriginal.expenses[0]?.amount, 345000)
+  console.log("ok  pending edits stay off the balance until approved")
+}
+
+{
   const trip: Trip = {
     id: "t-rm",
     joinCode: "REMV-26",
@@ -400,6 +496,43 @@ function liveExpense(id: string, addedBy: string, ts: number): Expense {
     "Bea is already on the roster. Use a different palayaw so we can tell you apart."
   )
   console.log("ok  unique nicknames")
+}
+
+{
+  assert.equal(titleCaseName("carl"), "Carl")
+  assert.equal(titleCaseName("  carl   de la cruz "), "Carl De La Cruz")
+  assert.equal(titleCaseName("CARL"), "Carl")
+  assert.equal(titleCaseName(""), "")
+  assert.equal(hasNameSeparator("Carl,"), true)
+  assert.equal(hasNameSeparator("Carl"), false)
+  assert.equal(hasNameSeparator("Carl & Mel"), true)
+  assert.equal(hasNameSeparator("Carl&Mel"), false)
+  assert.deepEqual(splitNameDraft("Carl, Mel, Pals", false), { complete: ["Carl", "Mel"], rest: "Pals" })
+  assert.deepEqual(splitNameDraft("Carl, Mel, Pals", true), { complete: ["Carl", "Mel", "Pals"], rest: "" })
+  assert.deepEqual(splitNameDraft("Carl & Mel", false), { complete: ["Carl"], rest: "Mel" })
+  assert.deepEqual(splitNameDraft("Carl&Mel", false), { complete: [], rest: "Carl&Mel" })
+  assert.deepEqual(splitNameDraft("Carl,\nMel", true), { complete: ["Carl", "Mel"], rest: "" })
+  const vsYou = commitNames("Carl", [], ["carl", "Mel"])
+  assert.deepEqual(vsYou.names, ["Mel"])
+  assert.equal(vsYou.flash, "Carl")
+  assert.equal(vsYou.vsYou, true)
+  const vsFriend = commitNames("Carl", ["Mel"], ["mel", "Pals"])
+  assert.deepEqual(vsFriend.names, ["Mel", "Pals"])
+  assert.equal(vsFriend.flash, "Mel")
+  assert.equal(vsFriend.vsYou, false)
+  const trips = [
+    {
+      id: "t-real",
+      members: [{ name: "Mel" }, { name: "Carl" }, { name: "Pals" }],
+    },
+    {
+      id: "t-siargao",
+      members: [{ name: "Tita" }],
+    },
+  ] as Trip[]
+  assert.deepEqual(recentBarkadaNames(trips, "Carl", []), ["Mel", "Pals"])
+  assert.deepEqual(recentBarkadaNames(trips, "Carl", ["Mel"]), ["Pals"])
+  console.log("ok  member name chips")
 }
 
 {
@@ -694,6 +827,46 @@ function liveExpense(id: string, addedBy: string, ts: number): Expense {
     }
   }
   console.log("ok  undo/revert payment + fake news")
+}
+
+{
+  const treas = "mg"
+  assert.equal(hatianViewerRole("mg", treas, "mg", "bea"), "debtor")
+  assert.equal(canCopyTransfer("mg", treas, "mg", "bea"), true)
+  assert.equal(canNudgeTransfer("mg", treas, "mg", "bea"), false)
+  assert.equal(canMarkTransferSent("mg", treas, "mg", "bea"), true)
+  assert.equal(canConfirmTransfer("mg", treas, "mg", "bea"), false)
+
+  assert.equal(hatianViewerRole("bea", treas, "jp", "bea"), "creditor")
+  assert.equal(canCopyTransfer("bea", treas, "jp", "bea"), false)
+  assert.equal(canNudgeTransfer("bea", treas, "jp", "bea"), true)
+  assert.equal(canMarkTransferSent("bea", treas, "jp", "bea"), true)
+  assert.equal(canConfirmTransfer("bea", treas, "jp", "bea"), true)
+
+  assert.equal(hatianViewerRole("mg", treas, "jp", "bea"), "treasurer_overseeing")
+  assert.equal(canCopyTransfer("mg", treas, "jp", "bea"), false)
+  assert.equal(canNudgeTransfer("mg", treas, "jp", "bea"), true)
+  assert.equal(canMarkTransferSent("mg", treas, "jp", "bea"), true)
+  assert.equal(canConfirmTransfer("mg", treas, "jp", "bea"), true)
+
+  assert.equal(hatianViewerRole("tin", treas, "jp", "bea"), "uninvolved")
+  assert.equal(canCopyTransfer("tin", treas, "jp", "bea"), false)
+  assert.equal(canNudgeTransfer("tin", treas, "jp", "bea"), false)
+  assert.equal(canMarkTransferSent("tin", treas, "jp", "bea"), false)
+  assert.equal(canConfirmTransfer("tin", treas, "jp", "bea"), false)
+
+  const siargao = seed().lakads[0]
+  const otherPair = transfers(siargao).find((row) => row.from !== siargao.treasurer && row.to !== siargao.treasurer)
+  assert.ok(otherPair)
+  const assist = reminder(siargao, otherPair, "default", "en", Date.now(), { fromTreasurer: true })
+  const plainNudge = reminder(siargao, otherPair, "default", "en", Date.now())
+  assert.ok(assist.includes("Treasurer assist"))
+  assert.ok(assist.includes("Migs"))
+  assert.ok(assist.includes(memberName(siargao, otherPair.to)))
+  assert.ok(assist.includes(memberName(siargao, otherPair.from)))
+  assert.ok(!/\{\w+\}/.test(assist))
+  assert.equal(plainNudge.includes("Treasurer assist"), false)
+  console.log("ok  hatian viewer roles + treasurer assist reminder")
 }
 
 console.log("\nAll checks passed.")

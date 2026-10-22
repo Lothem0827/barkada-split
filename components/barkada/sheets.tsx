@@ -1,9 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { PlusIcon, XIcon } from "lucide-react"
 
+import {
+  BarkadaMemberInput,
+  type BarkadaMemberInputHandle,
+} from "@/components/barkada/barkada-member-input"
 import { CopyAction } from "@/components/barkada/copy-action"
 import { Button } from "@/components/ui/button"
 import {
@@ -22,6 +26,7 @@ import { estCalc, peso } from "@/lib/calc"
 import { toast } from "@/components/ui/toast"
 import { t } from "@/lib/i18n"
 import { markJustCreated, parseJoinCodeFromInput } from "@/lib/join-code"
+import { recentBarkadaNames } from "@/lib/member-names"
 import { estMessage } from "@/lib/reminders"
 import { useBarkada } from "@/lib/store"
 import type { EstDraft } from "@/lib/types"
@@ -35,15 +40,36 @@ export function TripSheet({
 }) {
   const router = useRouter()
   const { state, createTrip } = useBarkada()
-  const { lang, profile } = state
+  const { lang, profile, lakads } = state
   const [name, setName] = useState("")
   const [you, setYou] = useState(profile.name)
-  const [others, setOthers] = useState("")
+  const [friends, setFriends] = useState<string[]>([])
   const [gcash, setGcash] = useState(profile.gcash)
   const [error, setError] = useState("")
+  const rosterRef = useRef<BarkadaMemberInputHandle>(null)
+  const youName = you.trim() || profile.name.trim()
+  const suggestions = useMemo(
+    () => recentBarkadaNames(lakads, youName, friends),
+    [lakads, youName, friends]
+  )
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange} swipeDirection="down" showSwipeHandle>
+    <Drawer
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) {
+          setName("")
+          setFriends([])
+          setError("")
+        } else {
+          setYou(profile.name)
+          setGcash(profile.gcash)
+        }
+        onOpenChange(next)
+      }}
+      swipeDirection="down"
+      showSwipeHandle
+    >
       <DrawerContent className="mx-auto max-w-[560px]">
         <DrawerHeader>
           <DrawerTitle>{t(lang, "newTrip")}</DrawerTitle>
@@ -61,31 +87,40 @@ export function TripSheet({
                 onChange={(event) => setName(event.target.value)}
               />
             </Field>
+            {!profile.name.trim() ? (
+              <Field>
+                <FieldLabel htmlFor="f-you">{t(lang, "yourName")}</FieldLabel>
+                <Input
+                  id="f-you"
+                  enterKeyHint="next"
+                  maxLength={40}
+                  value={you}
+                  placeholder="Migs"
+                  onChange={(event) => {
+                    setYou(event.target.value)
+                    if (error) setError("")
+                  }}
+                />
+              </Field>
+            ) : null}
             <Field>
-              <FieldLabel htmlFor="f-you">{t(lang, "yourName")}</FieldLabel>
-              <Input
-                id="f-you"
-                enterKeyHint="next"
-                maxLength={40}
-                value={you}
-                placeholder="Migs"
-                onChange={(event) => {
-                  setYou(event.target.value)
+              <FieldLabel htmlFor="f-others">{t(lang, "obRoster")}</FieldLabel>
+              <BarkadaMemberInput
+                key={open ? "open" : "closed"}
+                ref={rosterRef}
+                inputId="f-others"
+                lang={lang}
+                names={friends}
+                onChange={(next) => {
+                  setFriends(next)
                   if (error) setError("")
                 }}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="f-others">{t(lang, "others")}</FieldLabel>
-              <Input
-                id="f-others"
-                enterKeyHint="next"
-                value={others}
-                placeholder="Bea, Jopet, Tin"
-                onChange={(event) => {
-                  setOthers(event.target.value)
-                  if (error) setError("")
+                self={{
+                  name: youName,
+                  avatar: profile.avatar,
+                  label: t(lang, "obYouTreas"),
                 }}
+                suggestions={suggestions}
               />
             </Field>
             <Field>
@@ -109,7 +144,8 @@ export function TripSheet({
           <Button
             size="cta"
             onClick={() => {
-              const result = createTrip(name, you, others, gcash)
+              const extra = rosterRef.current?.commitDraft() ?? friends
+              const result = createTrip(name, youName, extra, gcash)
               if (!result.ok) {
                 setError(result.message)
                 return

@@ -10,7 +10,13 @@ import { hydrateState } from "@/lib/hydrate"
 import { t, takenNicknameMessage } from "@/lib/i18n"
 import { makeJoinCode } from "@/lib/join-code"
 import { isSeedTripId, mergeTrip, omitExpense, shouldClearDirty } from "@/lib/merge-trip"
-import { applyUndoPayment, canRevertConfirmed, makeFakeNewsNudge } from "@/lib/payments"
+import {
+  applyUndoPayment,
+  canMarkTransferSent,
+  canNudgeTransfer,
+  canRevertConfirmed,
+  makeFakeNewsNudge,
+} from "@/lib/payments"
 import { hashPin, isPin, pinKey, pinsMatch } from "@/lib/pin"
 import { seed } from "@/lib/seed"
 import { importErrorMessage, importTrip as parseTrip } from "@/lib/snapshot"
@@ -46,6 +52,7 @@ import {
   syncProfileToClaimedMembers,
   uid,
   type AppState,
+  type Expense,
   type ExpenseDraft,
   type Lang,
   type NudgeStatus,
@@ -113,6 +120,35 @@ function newTripBase(
 function markDirty(state: AppState, tripId: string): AppState {
   if (isSeedTripId(tripId) || state.dirtyIds.includes(tripId)) return state
   return { ...state, dirtyIds: [...state.dirtyIds, tripId] }
+}
+
+function withAudit(expense: Expense, ts: number, by: string, auditNote: string, historyNote?: string) {
+  const note = (historyNote || auditNote).slice(0, 140)
+  return {
+    auditNote: auditNote.slice(0, 140),
+    edits: [...(expense.edits || []), { ts, by, note }].slice(-50),
+  }
+}
+
+function applyPendingEdit(expense: Expense): Expense {
+  const proposal = expense.pendingEdit
+  if (!proposal) return { ...expense, pendingEdit: null }
+  return {
+    ...expense,
+    title: proposal.title,
+    amount: proposal.amount,
+    sc: proposal.sc,
+    payer: proposal.payer,
+    method: proposal.method,
+    ex: proposal.ex.slice(),
+    items: proposal.items.map((item) => ({
+      name: item.name,
+      price: item.price,
+      eaters: item.eaters.slice(),
+    })),
+    pendingEdit: null,
+    rejectionReason: undefined,
+  }
 }
 
 function withTrip(state: AppState, tripId: string, updater: (trip: Trip) => Trip | null) {
@@ -195,7 +231,7 @@ type BarkadaStore = {
   setLang: (lang: Lang) => void
   setAs: (id: string) => ActionResult
   timeTravel: (days: number) => ActionResult
-  createTrip: (name: string, you: string, others: string, gcash: string) => ActionResult
+  createTrip: (name: string, you: string, others: string[], gcash: string) => ActionResult
   startLakad: (name: string, friends: string[], open: boolean, roundTo: RoundTo, draft: OnboardDraft) => ActionResult
   joinLakad: (code: string, memberId: string | "new", draft: OnboardDraft) => ActionResult
   saveProfile: (draft: OnboardDraft) => ActionResult
@@ -215,7 +251,9 @@ type BarkadaStore = {
   editExpense: (id: string, draft: ExpenseDraft) => ActionResult
   approveExpense: (id: string) => ActionResult
   approveAllPending: () => ActionResult
-  rejectExpense: (id: string) => ActionResult
+  rejectExpense: (id: string, reason: string) => ActionResult
+  approveEdit: (id: string) => ActionResult
+  rejectEdit: (id: string) => ActionResult
   deleteExpense: (id: string) => ActionResult
   markPaid: (from: string, to: string, amount: number) => ActionResult
   confirmPayment: (id: string) => ActionResult
@@ -308,7 +346,7 @@ export const useBarkadaStore = create<BarkadaStore>()(
           const youName = you.trim().slice(0, 40)
           if (!tripName) return { ok: false, message: t(state.lang, "needTripName") }
           if (!youName) return { ok: false, message: t(state.lang, "needYourName") }
-          const parsed = collectUniqueNicknames(youName, others.split(/[,\n]/))
+          const parsed = collectUniqueNicknames(youName, others)
           if (!parsed.ok) {
             return { ok: false, message: takenNicknameMessage(state.lang, parsed.existing, parsed.vsYou) }
           }
@@ -589,45 +627,80 @@ export const useBarkadaStore = create<BarkadaStore>()(
           }
           const parsed = draftToExpense(active, draft)
           if (parsed.errs.length) return { ok: false, message: draftErrorMessage(parsed.errs, state.lang) }
-          const auto = active.open || isTreasurer(state, active)
+          const direct = active.open || isTreasurer(state, active)
+          const ts = Date.now() + state.offset * DAY
+          const editor = memberName(active, state.as)
+          const typed = (draft.note || "").trim()
           set({
             state: withTrip(state, active.id, (item) => ({
               ...item,
               expenses: item.expenses.map((expense) => {
-                if (expense.id !== id) return expense
-                if (!canEditExpense(state, item, expense)) return expense
-                const ts = Date.now() + state.offset * DAY
+                if (expense.id !== id || !canEditExpense(state, item, expense)) return expense
+                const liveDirect = item.open || state.as === item.treasurer
+                if (liveDirect) {
+                  const auditNote = `Edited by ${editor}`
+                  return {
+                    ...expense,
+                    ...parsed.e,
+                    status: "approved" as const,
+                    pendingEdit: null,
+                    rejectionReason: undefined,
+                    ts,
+                    ...withAudit(expense, ts, state.as, auditNote, typed),
+                  }
+                }
+                if (expense.status === "approved") {
+                  const auditNote = `Edit proposed by ${editor}`
+                  return {
+                    ...expense,
+                    pendingEdit: {
+                      ...parsed.e,
+                      editedBy: state.as,
+                      ts,
+                    },
+                    ...withAudit(expense, ts, state.as, auditNote, typed),
+                  }
+                }
+                const auditNote = `Resubmitted by ${editor}`
                 return {
                   ...expense,
                   ...parsed.e,
-                  status: item.open || state.as === item.treasurer ? expense.status : "pending",
+                  status: "pending" as const,
+                  pendingEdit: null,
+                  rejectionReason: undefined,
                   ts,
-                  edits: [
-                    ...(expense.edits || []),
-                    {
-                      ts,
-                      by: state.as,
-                      note: (draft.note || "").trim().slice(0, 140),
-                    },
-                  ],
+                  ...withAudit(expense, ts, state.as, auditNote, typed),
                 }
               }),
             })),
           })
-          return auto
-            ? { ok: true, message: t(state.lang, "updatedOk") }
-            : { ok: true, message: t(state.lang, "updatedPend") }
+          if (direct) return { ok: true, message: t(state.lang, "updatedOk") }
+          if (existing.status === "approved") {
+            return {
+              ok: true,
+              message: t(state.lang, "editSubmitted").replace("{name}", memberName(active, active.treasurer)),
+            }
+          }
+          return { ok: true, message: t(state.lang, "resubmitted") }
         },
         approveExpense: (id) => {
           const { state } = get()
           const active = activeTrip(state)
           if (!active || !isTreasurer(state, active)) return { ok: false, message: t(state.lang, "onlyT") }
+          const existing = active.expenses.find((expense) => expense.id === id)
+          if (!existing || existing.status !== "pending") return { ok: false, message: t(state.lang, "onlyT") }
           set({
             state: withTrip(state, active.id, (trip) => ({
               ...trip,
               expenses: trip.expenses.map((expense) =>
-                expense.id === id
-                  ? { ...expense, status: "approved" as const, ts: Date.now() + state.offset * DAY }
+                expense.id === id && expense.status === "pending"
+                  ? {
+                      ...expense,
+                      status: "approved" as const,
+                      rejectionReason: undefined,
+                      pendingEdit: null,
+                      ts: Date.now() + state.offset * DAY,
+                    }
                   : expense
               ),
             })),
@@ -645,40 +718,112 @@ export const useBarkadaStore = create<BarkadaStore>()(
               ...trip,
               expenses: trip.expenses.map((expense) =>
                 expense.status === "pending"
-                  ? { ...expense, status: "approved" as const, ts: Date.now() + state.offset * DAY }
+                  ? {
+                      ...expense,
+                      status: "approved" as const,
+                      rejectionReason: undefined,
+                      pendingEdit: null,
+                      ts: Date.now() + state.offset * DAY,
+                    }
                   : expense
               ),
             })),
           })
           return { ok: true, message: t(state.lang, "approved") }
         },
-        rejectExpense: (id) => {
+        rejectExpense: (id, reason) => {
           const { state } = get()
           const active = activeTrip(state)
           if (!active || !isTreasurer(state, active)) return { ok: false, message: t(state.lang, "onlyT") }
+          const reasonText = reason.trim().slice(0, 80)
+          const existing = active.expenses.find((expense) => expense.id === id)
+          if (!reasonText || !existing || existing.status !== "pending") {
+            return { ok: false, message: t(state.lang, "onlyT") }
+          }
+          const ts = Date.now() + state.offset * DAY
           set({
-            state: withTrip(state, active.id, (trip) => omitExpense(trip, id)),
+            state: withTrip(state, active.id, (trip) => ({
+              ...trip,
+              expenses: trip.expenses.map((expense) => {
+                if (expense.id !== id || expense.status !== "pending") return expense
+                return {
+                  ...expense,
+                  status: "rejected" as const,
+                  rejectionReason: reasonText,
+                  pendingEdit: null,
+                  ...withAudit(expense, ts, state.as, `Returned: ${reasonText}`),
+                }
+              }),
+            })),
           })
-          return { ok: true, message: t(state.lang, "rejected") }
+          return { ok: true, message: t(state.lang, "returnedToast") }
+        },
+        approveEdit: (id) => {
+          const { state } = get()
+          const active = activeTrip(state)
+          if (!active || !isTreasurer(state, active)) return { ok: false, message: t(state.lang, "onlyT") }
+          const existing = active.expenses.find((expense) => expense.id === id)
+          if (!existing?.pendingEdit) return { ok: false, message: t(state.lang, "onlyT") }
+          const ts = Date.now() + state.offset * DAY
+          const auditNote = `Edit by ${memberName(active, existing.pendingEdit.editedBy)} approved by ${memberName(active, state.as)}`
+          set({
+            state: withTrip(state, active.id, (trip) => ({
+              ...trip,
+              expenses: trip.expenses.map((expense) => {
+                if (expense.id !== id || !expense.pendingEdit) return expense
+                return {
+                  ...applyPendingEdit(expense),
+                  status: "approved" as const,
+                  ...withAudit(expense, ts, state.as, auditNote),
+                }
+              }),
+            })),
+          })
+          return { ok: true, message: t(state.lang, "editApprovedToast") }
+        },
+        rejectEdit: (id) => {
+          const { state } = get()
+          const active = activeTrip(state)
+          if (!active || !isTreasurer(state, active)) return { ok: false, message: t(state.lang, "onlyT") }
+          const existing = active.expenses.find((expense) => expense.id === id)
+          if (!existing?.pendingEdit) return { ok: false, message: t(state.lang, "onlyT") }
+          const ts = Date.now() + state.offset * DAY
+          set({
+            state: withTrip(state, active.id, (trip) => ({
+              ...trip,
+              expenses: trip.expenses.map((expense) => {
+                if (expense.id !== id || !expense.pendingEdit) return expense
+                return {
+                  ...expense,
+                  pendingEdit: null,
+                  ...withAudit(expense, ts, state.as, "Edit rejected — kept original approved bill"),
+                }
+              }),
+            })),
+          })
+          return { ok: true, message: t(state.lang, "editKeptToast") }
         },
         deleteExpense: (id) => {
           const { state } = get()
           const active = activeTrip(state)
           const expense = active?.expenses.find((item) => item.id === id)
-          const adderPending = !!(expense && expense.addedBy === state.as && expense.status === "pending")
-          if (!active || (!isTreasurer(state, active) && !adderPending)) {
+          const ownPending = !!(expense && expense.addedBy === state.as && expense.status === "pending")
+          const ownRejected = !!(expense && expense.addedBy === state.as && expense.status === "rejected")
+          if (!active || (!isTreasurer(state, active) && !ownPending && !ownRejected)) {
             return { ok: false, message: t(state.lang, "onlyT") }
           }
           set({
             state: withTrip(state, active.id, (trip) => omitExpense(trip, id)),
           })
-          return { ok: true, message: t(state.lang, adderPending ? "withdrawn" : "deleted") }
+          return { ok: true, message: t(state.lang, ownPending ? "withdrawn" : "deleted") }
         },
         markPaid: (from, to, amount) => {
           const { state } = get()
           const active = activeTrip(state)
           if (!active) return { ok: false, message: t(state.lang, "onlyT") }
-          if (from !== state.as && !isTreasurer(state, active)) return { ok: false, message: t(state.lang, "onlyT") }
+          if (!canMarkTransferSent(state.as, active.treasurer, from, to)) {
+            return { ok: false, message: t(state.lang, "onlyT") }
+          }
           if (active.payments.some((payment) => payment.status === "sent" && payment.from === from && payment.to === to)) {
             return { ok: false, message: t(state.lang, "onlyT") }
           }
@@ -725,7 +870,9 @@ export const useBarkadaStore = create<BarkadaStore>()(
           const { state } = get()
           const active = activeTrip(state)
           if (!active) return { ok: false, message: t(state.lang, "onlyT") }
-          if (state.as !== creditorId && !isTreasurer(state, active)) return { ok: false, message: t(state.lang, "onlyT") }
+          if (!canNudgeTransfer(state.as, active.treasurer, debtorId, creditorId)) {
+            return { ok: false, message: t(state.lang, "onlyT") }
+          }
           if (
             !active.members.some((member) => member.id === debtorId) ||
             !active.members.some((member) => member.id === creditorId) ||
@@ -882,11 +1029,27 @@ export const useBarkadaStore = create<BarkadaStore>()(
               ...trip,
               open,
               expenses: open
-                ? trip.expenses.map((expense) =>
-                    expense.status === "pending"
-                      ? { ...expense, status: "approved" as const, ts: Date.now() + state.offset * DAY }
-                      : expense
-                  )
+                ? trip.expenses.map((expense) => {
+                    if (expense.status === "rejected") return expense
+                    const ts = Date.now() + state.offset * DAY
+                    if (expense.pendingEdit) {
+                      return {
+                        ...applyPendingEdit(expense),
+                        status: "approved" as const,
+                        ...withAudit(expense, ts, state.as, "Edit applied when trip opened"),
+                      }
+                    }
+                    if (expense.status === "pending") {
+                      return {
+                        ...expense,
+                        status: "approved" as const,
+                        rejectionReason: undefined,
+                        pendingEdit: null,
+                        ts,
+                      }
+                    }
+                    return expense
+                  })
                 : trip.expenses,
             })),
           })

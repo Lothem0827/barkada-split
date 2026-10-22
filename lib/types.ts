@@ -9,7 +9,7 @@ export const LANGS = ["tl", "en", "ceb"] as const
 export type Lang = (typeof LANGS)[number]
 export type Tab = "home" | "gastos" | "hatian" | "barkada"
 export type SplitMethod = "even" | "item" | "exclude" | "libre"
-export type ExpenseStatus = "pending" | "approved"
+export type ExpenseStatus = "pending" | "approved" | "rejected"
 export type PaymentStatus = "sent" | "confirmed"
 export type NudgeStatus = "unread" | "read" | "seen_zoned"
 export type Persona = "default" | "conyo" | "tita" | "corporate" | "guilttrip"
@@ -62,6 +62,18 @@ export type EditNote = {
   note: string
 }
 
+export type ExpenseEditProposal = {
+  title: string
+  amount: number
+  sc: boolean
+  payer: string
+  method: SplitMethod
+  ex: string[]
+  items: Item[]
+  editedBy: string
+  ts: number
+}
+
 export type Expense = {
   id: string
   title: string
@@ -73,6 +85,9 @@ export type Expense = {
   items: Item[]
   addedBy: string
   status: ExpenseStatus
+  rejectionReason?: string
+  pendingEdit?: ExpenseEditProposal | null
+  auditNote?: string
   ts: number
   edits?: EditNote[]
 }
@@ -268,6 +283,45 @@ export function resolvePairNudges(
     return applyNudgeResolution(nudge, "read")
   })
   return changed ? next : nudges
+}
+
+export function newestPairNudge(
+  nudges: Nudge[] | undefined,
+  debtorId: string,
+  creditorId: string,
+  treasurerId: string
+) {
+  let best: Nudge | null = null
+  for (const nudge of nudges || []) {
+    if (!nudgeMatchesPair(nudge, debtorId, creditorId, treasurerId)) continue
+    if (!best || nudge.ts > best.ts) best = nudge
+  }
+  return best
+}
+
+export function newestUnreadPairNudge(
+  nudges: Nudge[] | undefined,
+  debtorId: string,
+  creditorId: string,
+  treasurerId: string
+) {
+  let best: Nudge | null = null
+  for (const nudge of nudges || []) {
+    if (nudge.read || !nudgeMatchesPair(nudge, debtorId, creditorId, treasurerId)) continue
+    if (!best || nudge.ts > best.ts) best = nudge
+  }
+  return best
+}
+
+export function pairSeenZonedCount(
+  nudges: Nudge[] | undefined,
+  debtorId: string,
+  creditorId: string,
+  treasurerId: string
+) {
+  return (nudges || []).filter(
+    (nudge) => nudge.status === "seen_zoned" && nudgeMatchesPair(nudge, debtorId, creditorId, treasurerId)
+  ).length
 }
 
 export function newestUnreadNudge(nudges: Nudge[] | undefined, memberId: string) {
@@ -515,18 +569,21 @@ export function newExpenseDraft(trip: Trip, payer: string): ExpenseDraft {
   }
 }
 
-export function editExpenseDraft(trip: Trip, expense: Expense): ExpenseDraft {
+export function editExpenseDraft(trip: Trip, expense: Expense, viewerId?: string): ExpenseDraft {
+  const proposal = expense.pendingEdit
+  const source =
+    expense.status === "approved" && proposal && viewerId && proposal.editedBy === viewerId ? proposal : expense
   return {
     id: expense.id,
-    title: expense.title,
-    amount: expense.method === "item" ? "" : plainFromCents(expense.amount),
-    sc: expense.sc,
-    payer: expense.payer,
-    method: expense.method,
-    ex: expense.ex.slice(),
+    title: source.title,
+    amount: source.method === "item" ? "" : plainFromCents(source.amount),
+    sc: source.sc,
+    payer: source.payer,
+    method: source.method,
+    ex: source.ex.slice(),
     items:
-      expense.method === "item"
-        ? expense.items.map((item) => ({
+      source.method === "item"
+        ? source.items.map((item) => ({
             name: item.name,
             price: plainFromCents(item.price),
             eaters: item.eaters.slice(),

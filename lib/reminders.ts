@@ -1,4 +1,5 @@
 import { peso } from "@/lib/calc"
+import { t } from "@/lib/i18n"
 import { daysOwed, lvl } from "@/lib/split-math"
 import { gcashOf, memberName, uiLang, type Lang, type Persona, type Transfer, type Trip } from "@/lib/types"
 
@@ -128,13 +129,20 @@ export function fakeNewsReminder(
   return fill(set[persona] ?? set.default, vars)
 }
 
-export function reminder(trip: Trip, transfer: Transfer, persona: Persona, lang: Lang, now: number) {
+export function reminder(
+  trip: Trip,
+  transfer: Transfer,
+  persona: Persona,
+  lang: Lang,
+  now: number,
+  opts?: { fromTreasurer?: boolean }
+) {
   const days = daysOwed(trip, transfer.from, now)
   const tone = uiLang(lang)
   const set = TONES[tone][persona] ?? TONES[tone].default
   const number = gcashOf(trip, transfer.to)
   const toName = memberName(trip, transfer.to)
-  return fill(set[lvl(days)], {
+  const body = fill(set[lvl(days)], {
     from: memberName(trip, transfer.from),
     to: toName,
     amt: peso(transfer.pay != null ? transfer.pay : transfer.amount),
@@ -146,6 +154,11 @@ export function reminder(trip: Trip, transfer: Transfer, persona: Persona, lang:
         ? "PM mo si " + toName + " for the GCash/Maya #"
         : "Ask " + toName + " for the GCash/Maya number",
   })
+  if (!opts?.fromTreasurer) return body
+  const prefix = t(lang, "treasAssistPrefix")
+    .replace("{treas}", memberName(trip, trip.treasurer))
+    .replace("{to}", toName)
+  return prefix + "\n\n" + body
 }
 
 export function estMessage(

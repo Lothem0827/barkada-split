@@ -1,5 +1,7 @@
 "use client"
 
+import { useState } from "react"
+
 import { ArmButton } from "@/components/barkada/arm-button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -17,7 +19,7 @@ import { balances, fmtDate, namesList, peso, sharesOf, totalOf, wrappedStats } f
 import { t, type CopyKey } from "@/lib/i18n"
 import { isSeedTripId } from "@/lib/merge-trip"
 import { useBarkada } from "@/lib/store"
-import { canEditExpense, initial, isTreasurer, memberName, type Expense, type Trip } from "@/lib/types"
+import { canEditExpense, initial, isTreasurer, memberName, type Expense, type Lang, type Trip } from "@/lib/types"
 import { cn } from "cn"
 
 const METHOD_KEY: Record<Expense["method"], CopyKey> = {
@@ -27,29 +29,98 @@ const METHOD_KEY: Record<Expense["method"], CopyKey> = {
   libre: "libre",
 }
 
+const RETURN_REASONS = ["reasonWrong", "reasonSplit", "reasonDuplicate", "reasonCancel"] as const
+
+const thumbClass = "h-auto min-h-[40px] whitespace-normal px-2 text-center leading-tight"
+
+function sameList(left: string[], right: string[]) {
+  if (left.length !== right.length) return false
+  const a = left.slice().sort()
+  const b = right.slice().sort()
+  return a.every((id, index) => id === b[index])
+}
+
+function sameItems(left: Expense["items"], right: Expense["items"]) {
+  if (left.length !== right.length) return false
+  return left.every(
+    (item, index) =>
+      item.name === right[index].name && item.price === right[index].price && sameList(item.eaters, right[index].eaters)
+  )
+}
+
+function reasonText(lang: Lang, reason?: string) {
+  if (!reason) return ""
+  if ((RETURN_REASONS as readonly string[]).includes(reason)) return t(lang, reason as (typeof RETURN_REASONS)[number])
+  return reason
+}
+
+function proposalLines(trip: Trip, expense: Expense, lang: Lang) {
+  const next = expense.pendingEdit
+  if (!next) return []
+  const lines: string[] = []
+  if (next.title !== expense.title) {
+    lines.push(t(lang, "diffTitle").replace("{from}", expense.title).replace("{to}", next.title))
+  }
+  if (totalOf(expense) !== totalOf(next)) lines.push(`${peso(totalOf(expense))} → ${peso(totalOf(next))}`)
+  if (next.payer !== expense.payer) {
+    lines.push(
+      t(lang, "diffPayer")
+        .replace("{from}", memberName(trip, expense.payer))
+        .replace("{to}", memberName(trip, next.payer))
+    )
+  }
+  if (next.method !== expense.method) {
+    lines.push(
+      t(lang, "diffMethod")
+        .replace("{from}", t(lang, METHOD_KEY[expense.method]))
+        .replace("{to}", t(lang, METHOD_KEY[next.method]))
+    )
+  }
+  if (!sameList(expense.ex, next.ex)) lines.push(t(lang, "diffPeople"))
+  if (!sameItems(expense.items, next.items)) lines.push(t(lang, "diffItems"))
+  if (!lines.length) lines.push(t(lang, "diffDetails"))
+  return lines
+}
+
 function ExpenseCard({
   trip,
   expense,
+  proposalActions,
   onApprove,
   onReject,
+  onApproveEdit,
+  onRejectEdit,
   onEdit,
   onDelete,
 }: {
   trip: Trip
   expense: Expense
+  proposalActions?: boolean
   onApprove?: () => void
-  onReject?: () => void
+  onReject?: (reason: string) => void
+  onApproveEdit?: () => void
+  onRejectEdit?: () => void
   onEdit?: () => void
   onDelete?: () => void
 }) {
   const { state } = useBarkada()
   const { lang, as } = state
+  const [returning, setReturning] = useState(false)
   const shares = sharesOf(trip, expense)
   const last = expense.edits?.[expense.edits.length - 1]
   const pending = expense.status === "pending"
+  const rejected = expense.status === "rejected"
   const mine = expense.addedBy === as
   return (
-    <Card className={pending ? "ring-2 ring-dashed ring-amber-500/80" : undefined}>
+    <Card
+      className={
+        rejected
+          ? "border-amber-600 bg-amber-50 ring-2 ring-amber-500/80 dark:bg-amber-500/10"
+          : pending
+            ? "ring-2 ring-dashed ring-amber-500/80"
+            : undefined
+      }
+    >
       <CardHeader>
         <CardTitle className="wrap-break-word">{expense.title}</CardTitle>
         <CardAction>
@@ -72,6 +143,29 @@ function ExpenseCard({
               {t(lang, "pending")} · {t(lang, "addedBy")} {memberName(trip, expense.addedBy)}
             </Badge>
           )
+        ) : null}
+        {rejected ? (
+          <Badge variant="secondary" className="h-auto whitespace-normal">
+            {t(lang, "returnedBy")
+              .replace("{name}", memberName(trip, trip.treasurer))
+              .replace("{reason}", reasonText(lang, expense.rejectionReason))}
+          </Badge>
+        ) : null}
+        {expense.pendingEdit ? (
+          <div className="flex flex-col gap-2 rounded-xl border border-amber-500/70 bg-amber-500/10 p-3">
+            <Badge variant="secondary" className="h-auto whitespace-normal">
+              {proposalActions
+                ? t(lang, "editProposed").replace("{name}", memberName(trip, expense.pendingEdit.editedBy))
+                : t(lang, "editWaiting").replace("{name}", memberName(trip, trip.treasurer))}
+            </Badge>
+            <ul className="flex flex-col gap-1 text-sm">
+              {proposalLines(trip, expense, lang).map((line, index) => (
+                <li key={index} className="wrap-break-word">
+                  {line}
+                </li>
+              ))}
+            </ul>
+          </div>
         ) : null}
         <div className="flex flex-wrap gap-1.5">
           {trip.members
@@ -114,37 +208,77 @@ function ExpenseCard({
             {expense.edits && expense.edits.length > 1 ? ` (${expense.edits.length} ${t(lang, "edits")})` : ""}
           </p>
         ) : null}
-        {onApprove || onReject || onEdit || onDelete ? (
-          <div className="flex flex-col gap-2">
-            {onApprove ? (
-              <Button size="touch" className="w-full min-h-[40px]" onClick={onApprove}>
+        {proposalActions && onApproveEdit && onRejectEdit ? (
+          <div className="grid grid-cols-2 gap-2">
+            <Button className={thumbClass} onClick={onApproveEdit}>
+              {t(lang, "approveEdit")}
+            </Button>
+            <Button variant="outline" className={thumbClass} onClick={onRejectEdit}>
+              {t(lang, "rejectEdit")}
+            </Button>
+          </div>
+        ) : null}
+        {pending && onApprove && onReject ? (
+          returning ? (
+            <div className="flex flex-wrap gap-2">
+              {RETURN_REASONS.map((reason) => (
+                <Button
+                  key={reason}
+                  variant="outline"
+                  className={thumbClass}
+                  onClick={() => {
+                    setReturning(false)
+                    onReject(reason)
+                  }}
+                >
+                  {t(lang, reason)}
+                </Button>
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <Button className={thumbClass} onClick={onApprove}>
                 {t(lang, "approve")}
               </Button>
+              <Button variant="outline" className={thumbClass} onClick={() => setReturning(true)}>
+                {t(lang, "returnReject")}
+              </Button>
+            </div>
+          )
+        ) : null}
+        {rejected && (onEdit || onDelete) ? (
+          <div className="grid grid-cols-2 gap-2">
+            {onEdit ? (
+              <Button className={thumbClass} onClick={onEdit}>
+                {t(lang, "fixResubmit")}
+              </Button>
             ) : null}
-            {onEdit || onReject || onDelete ? (
-              <div className="flex flex-wrap items-center gap-2">
-                {onEdit ? (
-                  <Button size="touch" variant="outline" className="min-h-[40px] flex-1" onClick={onEdit}>
-                    {t(lang, "edit")}
-                  </Button>
-                ) : null}
-                {onReject ? (
-                  <ArmButton
-                    label={t(lang, "reject")}
-                    armedLabel={t(lang, "sureReject")}
-                    cancelLabel={t(lang, "cancel")}
-                    onConfirm={onReject}
-                  />
-                ) : null}
-                {onDelete ? (
-                  <ArmButton
-                    label={pending && mine ? t(lang, "withdraw") : t(lang, "del")}
-                    armedLabel={pending && mine ? t(lang, "sureWithdraw") : t(lang, "sureDel")}
-                    cancelLabel={t(lang, "cancel")}
-                    onConfirm={onDelete}
-                  />
-                ) : null}
-              </div>
+            {onDelete ? (
+              <ArmButton
+                variant="ghost"
+                className="w-full whitespace-normal"
+                label={t(lang, "deleteBill")}
+                armedLabel={t(lang, "sureDeleteBill")}
+                cancelLabel={t(lang, "cancel")}
+                onConfirm={onDelete}
+              />
+            ) : null}
+          </div>
+        ) : null}
+        {!rejected && !proposalActions && (onEdit || onDelete) ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {onEdit ? (
+              <Button size="touch" variant="outline" className="min-h-[40px] flex-1" onClick={onEdit}>
+                {t(lang, "edit")}
+              </Button>
+            ) : null}
+            {onDelete ? (
+              <ArmButton
+                label={pending && mine ? t(lang, "withdraw") : t(lang, "del")}
+                armedLabel={pending && mine ? t(lang, "sureWithdraw") : t(lang, "sureDel")}
+                cancelLabel={t(lang, "cancel")}
+                onConfirm={onDelete}
+              />
             ) : null}
           </div>
         ) : null}
@@ -158,13 +292,17 @@ export function GastosView({
   onApprove,
   onApproveAll,
   onReject,
+  onApproveEdit,
+  onRejectEdit,
   onDelete,
   onInvite,
 }: {
   onEdit: (id: string) => void
   onApprove: (id: string) => void
   onApproveAll: () => void
-  onReject: (id: string) => void
+  onReject: (id: string, reason: string) => void
+  onApproveEdit: (id: string) => void
+  onRejectEdit: (id: string) => void
   onDelete: (id: string) => void
   onInvite: () => void
 }) {
@@ -180,14 +318,19 @@ export function GastosView({
       : net > 0
         ? `${t(lang, "youAreOwed")}: ${peso(net)}`
         : t(lang, "youEven")
-  const pending = trip.expenses
-    .filter((expense) => expense.status === "pending")
-    .slice()
-    .sort((a, b) => b.ts - a.ts)
+  const newest = (a: Expense, b: Expense) => b.ts - a.ts
+  const pending = trip.expenses.filter((expense) => expense.status === "pending").slice().sort(newest)
+  const proposals = treasurer
+    ? trip.expenses.filter((expense) => expense.status === "approved" && expense.pendingEdit).slice().sort(newest)
+    : []
+  const rejected = trip.expenses.filter((expense) => expense.status === "rejected").slice().sort(newest)
+  const proposalIds = new Set(proposals.map((expense) => expense.id))
   const approved = trip.expenses
-    .filter((expense) => expense.status === "approved")
+    .filter((expense) => expense.status === "approved" && !proposalIds.has(expense.id))
     .slice()
-    .sort((a, b) => b.ts - a.ts)
+    .sort(newest)
+  const review = treasurer ? [...pending, ...proposals, ...rejected] : [...pending, ...rejected]
+  const queueCount = pending.length + proposals.length
   const waiting = trip.members.filter((member) => !member.claimedByUid)
   const claimed = trip.members.filter((member) => member.claimedByUid)
   const showInvite = waiting.length > 0 && !isSeedTripId(trip.id)
@@ -243,41 +386,62 @@ export function GastosView({
         </Card>
       ) : null}
 
-      {pending.length && treasurer ? (
+      {queueCount && treasurer ? (
         <Card>
           <CardHeader>
-            <CardTitle>{t(lang, "pendingQueue").replace("{n}", String(pending.length))}</CardTitle>
-            <CardAction>
-              <Button size="touch" className="min-h-[40px]" onClick={onApproveAll}>
-                {t(lang, "approveAll").replace("{n}", String(pending.length))}
-              </Button>
-            </CardAction>
+            <CardTitle>{t(lang, "pendingQueue").replace("{n}", String(queueCount))}</CardTitle>
+            {pending.length ? (
+              <CardAction>
+                <Button size="touch" className="min-h-[40px]" onClick={onApproveAll}>
+                  {t(lang, "approveAll").replace("{n}", String(pending.length))}
+                </Button>
+              </CardAction>
+            ) : null}
           </CardHeader>
         </Card>
       ) : null}
 
-      {pending.length ? (
+      {review.length ? (
         <section className="flex flex-col gap-3">
           <div className="flex items-baseline justify-between gap-2">
             <h2 className="font-heading text-lg font-semibold">{t(lang, "pending")}</h2>
-            <Badge variant="secondary">{pending.length}</Badge>
+            <Badge variant="secondary">{review.length}</Badge>
           </div>
           <p className="text-sm text-muted-foreground">
             {treasurer
               ? t(lang, "treasApprove")
               : t(lang, "pendingFor").replace("{name}", memberName(trip, trip.treasurer))}
           </p>
-          {pending.map((expense) => {
+          {review.map((expense) => {
             const mine = expense.addedBy === as
+            const proposal = expense.status === "approved" && !!expense.pendingEdit
+            const recoverable = expense.status === "rejected" && (mine || treasurer)
             return (
               <ExpenseCard
                 key={expense.id}
                 trip={trip}
                 expense={expense}
-                onApprove={treasurer ? () => onApprove(expense.id) : undefined}
-                onReject={treasurer ? () => onReject(expense.id) : undefined}
-                onEdit={canEditExpense(state, trip, expense) ? () => onEdit(expense.id) : undefined}
-                onDelete={mine || treasurer ? () => onDelete(expense.id) : undefined}
+                proposalActions={proposal && treasurer}
+                onApprove={expense.status === "pending" && treasurer ? () => onApprove(expense.id) : undefined}
+                onReject={
+                  expense.status === "pending" && treasurer ? (reason) => onReject(expense.id, reason) : undefined
+                }
+                onApproveEdit={proposal && treasurer ? () => onApproveEdit(expense.id) : undefined}
+                onRejectEdit={proposal && treasurer ? () => onRejectEdit(expense.id) : undefined}
+                onEdit={
+                  proposal ? undefined : canEditExpense(state, trip, expense) ? () => onEdit(expense.id) : undefined
+                }
+                onDelete={
+                  proposal
+                    ? undefined
+                    : expense.status === "rejected"
+                      ? recoverable
+                        ? () => onDelete(expense.id)
+                        : undefined
+                      : mine || treasurer
+                        ? () => onDelete(expense.id)
+                        : undefined
+                }
               />
             )
           })}

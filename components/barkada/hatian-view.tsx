@@ -14,7 +14,14 @@ import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle }
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { balances, dayStr, daysOwed, fmtAgo, fmtDate, peso, plain, potOf, transfers } from "@/lib/calc"
 import { toast } from "@/components/ui/toast"
-import { t, type CopyKey } from "@/lib/i18n"
+import { sulkMeta, t, type CopyKey } from "@/lib/i18n"
+import {
+  canConfirmTransfer,
+  canCopyTransfer,
+  canMarkTransferSent,
+  canNudgeTransfer,
+  hatianViewerRole,
+} from "@/lib/payments"
 import { reminder } from "@/lib/reminders"
 import { useBarkada } from "@/lib/store"
 import {
@@ -24,9 +31,12 @@ import {
   hasCooldownNudge,
   isTreasurer,
   memberName,
+  newestUnreadPairNudge,
+  pairSeenZonedCount,
   type Lang,
   type Persona,
   type Transfer,
+  type Trip,
 } from "@/lib/types"
 
 const PERSONA_COPY: Record<Persona, CopyKey> = {
@@ -52,7 +62,6 @@ export function HatianView({
   const { state, trip, now, markPaid, confirmPayment, sendNudge } = store
   const treasurer = trip ? isTreasurer(state, trip) : false
   const [openKey, setOpenKey] = useState<string | null>(null)
-  const [toneOpen, setToneOpen] = useState<string | null>(null)
   const [cardPersona, setCardPersona] = useState<Record<string, Persona>>({})
   const [hatianScope, setHatianScope] = useState<HatianScope>(treasurer ? "all" : "mine")
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null)
@@ -95,18 +104,6 @@ export function HatianView({
 
   function keyOf(row: Transfer) {
     return row.from + ">" + row.to
-  }
-
-  function involved(row: Transfer) {
-    return row.from === as || row.to === as
-  }
-
-  function canInteract(row: Transfer) {
-    return involved(row) || treasurer
-  }
-
-  function canNudge(row: Transfer) {
-    return row.to === as || treasurer
   }
 
   function personaOf(key: string) {
@@ -184,63 +181,78 @@ export function HatianView({
         visible.map((row) => {
           const key = keyOf(row)
           const pending = sent.find((payment) => payment.from === row.from && payment.to === row.to)
-          if (!canInteract(row)) {
+          const role = hatianViewerRole(as, trip.treasurer, row.from, row.to)
+          const sulk = sulkMeta(lang, daysOwed(trip, row.from, now))
+          const fromName = memberName(trip, row.from)
+          const toName = memberName(trip, row.to)
+
+          if (role === "uninvolved") {
             return (
-              <Card key={key}>
-                <CardContent className="flex items-center justify-between gap-3">
-                  <div className="flex min-w-0 flex-col gap-1.5">
-                    <p className="font-heading text-sm font-semibold">
-                      {memberName(trip, row.from)}
-                      <span className="text-muted-foreground"> → </span>
-                      {memberName(trip, row.to)}
-                    </p>
-                    <Badge variant="secondary" className="w-fit">
-                      {pending ? t(lang, "sentShort") : t(lang, "chill")}
-                    </Badge>
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end gap-0.5">
-                    <span className="font-mono text-base font-semibold tabular-nums">{peso(row.pay)}</span>
-                    {row.pay !== row.amount ? (
-                      <span className="text-xs text-muted-foreground">
-                        {t(lang, "exact")}: {peso(row.amount)}
-                      </span>
-                    ) : null}
-                  </div>
-                </CardContent>
-              </Card>
+              <div
+                key={key}
+                ref={(node) => {
+                  cardRefs.current[key] = node
+                }}
+                className="flex items-center justify-between gap-3 rounded-full border bg-background px-3.5 py-2.5 text-sm"
+              >
+                <p className="min-w-0 truncate font-medium">
+                  {fromName}
+                  <span className="text-muted-foreground"> → </span>
+                  {toName}
+                </p>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="font-mono font-semibold tabular-nums">{peso(row.pay)}</span>
+                  <Badge variant="secondary">
+                    {pending ? t(lang, "sentShort") : sulk.emoji + " " + sulk.name}
+                  </Badge>
+                </div>
+              </div>
             )
           }
 
           const number = gcashOf(trip, row.to)
           const tone = personaOf(key)
-          const preview = reminder(trip, row, tone, lang, now)
+          const fromTreasurer = role === "treasurer_overseeing"
+          const preview = reminder(trip, row, tone, lang, now, { fromTreasurer })
           const nudgeLocked =
             !!pending || hasCooldownNudge(trip.nudges, row.from, row.to, trip.treasurer, now)
+          const incoming = newestUnreadPairNudge(trip.nudges, row.from, row.to, trip.treasurer)
+          const seenCount = pairSeenZonedCount(trip.nudges, row.from, row.to, trip.treasurer)
+          const showCopy = canCopyTransfer(as, trip.treasurer, row.from, row.to)
+          const showNudge = canNudgeTransfer(as, trip.treasurer, row.from, row.to) && !pending
+          const showConfirm = !!pending && canConfirmTransfer(as, trip.treasurer, row.from, row.to)
+          const showMarkPaid = !pending && canMarkTransferSent(as, trip.treasurer, row.from, row.to)
+
           return (
             <Card
               key={key}
               ref={(node) => {
                 cardRefs.current[key] = node
               }}
+              className={openKey === key ? "ring-2 ring-ring" : undefined}
             >
               <CardHeader>
                 <CardTitle className="flex flex-wrap items-center gap-1">
-                  {memberName(trip, row.from)}
+                  {fromName}
                   <span className="text-muted-foreground">→</span>
-                  {memberName(trip, row.to)}
+                  {toName}
                 </CardTitle>
                 <CardAction>
                   <span className="font-mono text-lg font-semibold tabular-nums">{peso(row.pay)}</span>
                 </CardAction>
-                {row.from === as ? (
+                {role === "debtor" ? (
                   <Badge className="w-fit border-transparent bg-l3/15 text-l3">
-                    {t(lang, "youPay").replace("{name}", memberName(trip, row.to))}
+                    {t(lang, "youPay").replace("{name}", toName)}
                   </Badge>
-                ) : row.to === as ? (
+                ) : role === "creditor" ? (
                   <Badge className="w-fit border-transparent bg-l0/15 text-l0">
-                    {t(lang, "youCollect").replace("{name}", memberName(trip, row.from))}
+                    {t(lang, "youCollect").replace("{name}", fromName)}
                   </Badge>
-                ) : null}
+                ) : (
+                  <Badge variant="secondary" className="w-fit">
+                    {t(lang, "treasOversight").replace("{from}", fromName).replace("{to}", toName)}
+                  </Badge>
+                )}
                 {row.pay !== row.amount ? (
                   <CardDescription>
                     {t(lang, "exact")}: {peso(row.amount)}
@@ -249,50 +261,68 @@ export function HatianView({
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
                 <SulkMeter days={daysOwed(trip, row.from, now)} lang={lang} />
-                <p className="text-sm text-muted-foreground wrap-break-word">
-                  {t(lang, "gcashOf")} {memberName(trip, row.to)}:{" "}
-                  <span className="font-mono select-all">{number || t(lang, "noGcash")}</span>
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  <CopyAction
-                    size="touch"
-                    variant="outline"
-                    className="w-full"
-                    disabled={!number}
-                    copiedLabel={t(lang, "copyDone")}
-                    onCopy={() => onCopy(digits(number), t(lang, "numCopied"))}
-                  >
-                    {t(lang, "copyNum")}
-                  </CopyAction>
-                  <CopyAction
-                    size="touch"
-                    variant="outline"
-                    className="w-full"
-                    copiedLabel={t(lang, "copyDone")}
-                    onCopy={() => onCopy(plain(row.pay), plain(row.pay) + " " + t(lang, "copied"))}
-                  >
-                    {t(lang, "copyAmt")}
-                  </CopyAction>
-                </div>
-                {pending ? (
-                  <div className="flex flex-col gap-2">
-                    <Badge variant="secondary">
-                      {t(lang, "sentWait").replace("{name}", memberName(trip, row.to))}
-                    </Badge>
-                    {as === row.to || treasurer ? (
-                      <Button
-                        size="cta"
-                        className="min-h-[46px]"
-                        onClick={() => {
-                          const result = confirmPayment(pending.id)
-                          toast.add({ title: result.message, timeout: 1800 })
-                        }}
+                {role === "debtor" && incoming ? (
+                  <Alert>
+                    <AlertDescription>
+                      {t(lang, "nudgedYou").replace("{name}", memberName(trip, incoming.from))}
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
+                {showCopy ? (
+                  <>
+                    <p className="text-sm text-muted-foreground wrap-break-word">
+                      {t(lang, "gcashOf")} {toName}:{" "}
+                      <span className="font-mono select-all">{number || t(lang, "noGcash")}</span>
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <CopyAction
+                        size="touch"
+                        variant="outline"
+                        className="w-full"
+                        disabled={!number}
+                        copiedLabel={t(lang, "copyDone")}
+                        onCopy={() => onCopy(digits(number), t(lang, "numCopied"))}
                       >
-                        {t(lang, "confirm")}
-                      </Button>
-                    ) : null}
-                  </div>
-                ) : as === row.from || treasurer ? (
+                        {t(lang, "copyNumOf").replace("{name}", toName)}
+                      </CopyAction>
+                      <CopyAction
+                        size="touch"
+                        variant="outline"
+                        className="w-full"
+                        copiedLabel={t(lang, "copyDone")}
+                        onCopy={() => onCopy(plain(row.pay), plain(row.pay) + " " + t(lang, "copied"))}
+                      >
+                        {"💸 " + t(lang, "copyAmt")}
+                      </CopyAction>
+                    </div>
+                  </>
+                ) : null}
+                {role === "debtor" && pending ? (
+                  <Badge variant="secondary" className="w-fit whitespace-normal">
+                    {t(lang, "sentWaitConfirm").replace("{name}", toName)}
+                  </Badge>
+                ) : null}
+                {showConfirm && pending ? (
+                  <Button
+                    size="cta"
+                    className={
+                      role === "creditor"
+                        ? "min-h-[46px] bg-l0 text-white hover:bg-l0/90"
+                        : "min-h-[46px]"
+                    }
+                    onClick={() => {
+                      const result = confirmPayment(pending.id)
+                      toast.add({ title: result.message, timeout: 1800 })
+                    }}
+                  >
+                    {role === "creditor"
+                      ? t(lang, "confirmAmtFrom")
+                          .replace("{amt}", peso(row.pay))
+                          .replace("{name}", fromName)
+                      : t(lang, "confirmReceived")}
+                  </Button>
+                ) : null}
+                {showMarkPaid && role === "debtor" ? (
                   <Button
                     size="cta"
                     className="min-h-[46px]"
@@ -301,82 +331,51 @@ export function HatianView({
                       toast.add({ title: result.message, timeout: 1800 })
                     }}
                   >
-                    {as === row.from ? t(lang, "paid") : t(lang, "markPaid")}
+                    {t(lang, "paidAmt").replace("{amt}", peso(row.pay))}
                   </Button>
                 ) : null}
-                {canNudge(row) ? (
+                {showNudge ? (
+                  <NudgeComposer
+                    trip={trip}
+                    row={row}
+                    lang={lang}
+                    tone={tone}
+                    preview={preview}
+                    nudgeLocked={nudgeLocked}
+                    fromTreasurer={fromTreasurer}
+                    seenCount={seenCount}
+                    onTone={(next) => setCardPersona((prev) => ({ ...prev, [key]: next }))}
+                    onNudge={() => {
+                      const result = sendNudge(row.from, row.to, row.amount, tone, preview)
+                      toast.add({ title: result.message, timeout: 1800 })
+                    }}
+                    onCopy={() => onCopy(preview, t(lang, "msgCopied"))}
+                  />
+                ) : null}
+                {showMarkPaid && role === "treasurer_overseeing" ? (
+                  <Button
+                    size="cta"
+                    className="min-h-[46px]"
+                    onClick={() => {
+                      const result = markPaid(row.from, row.to, row.amount)
+                      toast.add({ title: result.message, timeout: 1800 })
+                    }}
+                  >
+                    {t(lang, "markPaidCta")}
+                  </Button>
+                ) : null}
+                {showMarkPaid && role === "creditor" ? (
                   <Button
                     size="touch"
                     variant="ghost"
-                    className="w-full"
-                    aria-expanded={openKey === key}
+                    className="w-full text-muted-foreground"
                     onClick={() => {
-                      const next = openKey === key ? null : key
-                      setOpenKey(next)
-                      if (next && !cardPersona[key]) {
-                        setCardPersona((prev) => ({ ...prev, [key]: persona }))
-                      }
+                      const result = markPaid(row.from, row.to, row.amount)
+                      toast.add({ title: result.message, timeout: 1800 })
                     }}
                   >
-                    {t(lang, "remind")}
+                    {t(lang, "markPaidBehalf")}
                   </Button>
-                ) : null}
-                {canNudge(row) && openKey === key ? (
-                  <div className="flex flex-col gap-2 border-t border-dashed pt-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <button
-                        type="button"
-                        className="min-h-[34px] rounded-full border border-border bg-background px-2.5 text-xs font-bold"
-                        aria-expanded={toneOpen === key}
-                        onClick={() => setToneOpen(toneOpen === key ? null : key)}
-                      >
-                        {t(lang, "tonePill").replace("{persona}", t(lang, PERSONA_COPY[tone]))}
-                      </button>
-                    </div>
-                    {toneOpen === key ? (
-                      <div className="flex flex-wrap gap-1.5">
-                        {PERSONAS.map((item) => (
-                          <Button
-                            key={item.id}
-                            type="button"
-                            size="xs"
-                            variant={tone === item.id ? "default" : "outline"}
-                            className="min-h-[34px] rounded-full px-2.5 text-xs font-bold"
-                            onClick={() => setCardPersona((prev) => ({ ...prev, [key]: item.id }))}
-                          >
-                            {t(lang, PERSONA_COPY[item.id])}
-                          </Button>
-                        ))}
-                      </div>
-                    ) : null}
-                    <p className="rounded-lg border bg-muted/40 p-3 text-sm whitespace-pre-wrap wrap-break-word">
-                      {preview}
-                    </p>
-                    <div className="mt-2 grid grid-cols-2 gap-2">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        className="min-h-[42px] w-full"
-                        disabled={nudgeLocked}
-                        onClick={() => {
-                          const result = sendNudge(row.from, row.to, row.amount, tone, preview)
-                          toast.add({ title: result.message, timeout: 1800 })
-                        }}
-                      >
-                        {nudgeLocked
-                          ? t(lang, "nudgedPending")
-                          : t(lang, "nudgeInApp").replace("{name}", memberName(trip, row.from))}
-                      </Button>
-                      <CopyAction
-                        variant="secondary"
-                        className="min-h-[42px] w-full"
-                        copiedLabel={t(lang, "copyDone")}
-                        onCopy={() => onCopy(preview, t(lang, "msgCopied"))}
-                      >
-                        {t(lang, "copyForGc")}
-                      </CopyAction>
-                    </div>
-                  </div>
                 ) : null}
               </CardContent>
             </Card>
@@ -481,6 +480,89 @@ export function HatianView({
           if (!next) setSelectedPaymentId(null)
         }}
       />
+    </div>
+  )
+}
+
+function NudgeComposer({
+  trip,
+  row,
+  lang,
+  tone,
+  preview,
+  nudgeLocked,
+  fromTreasurer,
+  seenCount,
+  onTone,
+  onNudge,
+  onCopy,
+}: {
+  trip: Trip
+  row: Transfer
+  lang: Lang
+  tone: Persona
+  preview: string
+  nudgeLocked: boolean
+  fromTreasurer: boolean
+  seenCount: number
+  onTone: (persona: Persona) => void
+  onNudge: () => void
+  onCopy: () => boolean | void | Promise<boolean | void>
+}) {
+  const fromName = memberName(trip, row.from)
+  const toName = memberName(trip, row.to)
+  return (
+    <div className="flex flex-col gap-2 border-t border-dashed pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-bold">
+          {fromTreasurer
+            ? t(lang, "treasAssistNudge")
+            : t(lang, "tonePill").replace("{persona}", t(lang, PERSONA_COPY[tone]))}
+        </p>
+        {nudgeLocked ? (
+          <Badge variant="secondary">{t(lang, "nudgedPending")}</Badge>
+        ) : seenCount > 0 ? (
+          <Badge variant="secondary">{t(lang, "seenZoner").replace("{n}", String(seenCount))}</Badge>
+        ) : null}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {PERSONAS.map((item) => (
+          <Button
+            key={item.id}
+            type="button"
+            size="xs"
+            variant={tone === item.id ? "default" : "outline"}
+            className="min-h-[34px] rounded-full px-2.5 text-xs font-bold"
+            onClick={() => onTone(item.id)}
+          >
+            {t(lang, PERSONA_COPY[item.id])}
+          </Button>
+        ))}
+      </div>
+      <p className="rounded-lg border bg-muted/40 p-3 text-sm whitespace-pre-wrap wrap-break-word">{preview}</p>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <Button
+          type="button"
+          variant="secondary"
+          className="min-h-[42px] w-full"
+          disabled={nudgeLocked}
+          onClick={onNudge}
+        >
+          {nudgeLocked
+            ? t(lang, "nudgedPending")
+            : fromTreasurer
+              ? t(lang, "nudgeFor").replace("{from}", fromName).replace("{to}", toName)
+              : t(lang, "nudgeInApp").replace("{name}", fromName)}
+        </Button>
+        <CopyAction
+          variant="secondary"
+          className="min-h-[42px] w-full"
+          copiedLabel={t(lang, "copyDone")}
+          onCopy={onCopy}
+        >
+          {t(lang, "copyForGc")}
+        </CopyAction>
+      </div>
     </div>
   )
 }
