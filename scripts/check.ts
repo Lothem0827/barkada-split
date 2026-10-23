@@ -4,6 +4,7 @@ import { isValidGcash, sanitizeGcash } from "../lib/gcash.ts"
 import { balances, distribute, lvl, parsePeso, peso, sharesOf, totalOf, transfers, wrappedStats } from "../lib/calc.ts"
 import { hydrateState } from "../lib/hydrate.ts"
 import { inviteUrl, isJoinCode, makeJoinCode, normalizeJoinCode, parseJoinCodeFromInput } from "../lib/join-code.ts"
+import { encode } from "uqr"
 import {
   commitNames,
   hasNameSeparator,
@@ -26,14 +27,26 @@ import {
 } from "../lib/payments.ts"
 import { fakeNewsReminder, reminder, sampleReminder } from "../lib/reminders.ts"
 import { seed } from "../lib/seed.ts"
+import {
+  activityAgo,
+  activityResiboText,
+  defaultBarkadaHub,
+  isDramaticActivity,
+  mergeActivityLog,
+  tripActivityLog,
+  unreadActivityCount,
+  wrappedShareText,
+} from "../lib/activity.ts"
 import { flushPayload, hasUnsyncedRows, mergeTrip, shouldClearDirty } from "../lib/merge-trip.ts"
 import { exportTrip, importTrip, sanitizeTrip } from "../lib/snapshot.ts"
 import {
+  ACTIVITY_LOG_CAP,
   AVATARS,
   DAY,
   PERSONAS,
   ackEmergencyLog,
   appendEmergencyLog,
+  logActivity,
   collectUniqueNicknames,
   emptyState,
   emergencyLogOf,
@@ -277,6 +290,14 @@ assert.ok(isJoinCode("ELYU-26"))
 assert.equal(parseJoinCodeFromInput("https://app.example/join/ELYU-26"), "ELYU-26")
 assert.equal(inviteUrl("ELYU-26", "https://app.example"), "https://app.example/join/ELYU-26")
 assert.equal(inviteUrl("ELYU-26", "https://app.example", "m_jigs"), "https://app.example/join/ELYU-26?seat=m_jigs")
+{
+  const general = encode(inviteUrl("ELYU-26", "https://app.example"), { ecc: "M", border: 2 })
+  const seated = encode(inviteUrl("ELYU-26", "https://app.example", "m_jigs"), { ecc: "M", border: 2 })
+  assert.ok(general.size >= 21)
+  assert.equal(general.data.length, general.size)
+  assert.equal(general.data[0].length, general.size)
+  assert.ok(seated.size >= 21)
+}
 const seeded = structuredClone(state.lakads[0])
 const free = bindSeat(seeded, "bea", { name: "Bea", gcash: "0918", avatar: "😎" }, "uid-bea")
 assert.equal(free.ok, true)
@@ -1041,6 +1062,142 @@ function liveExpense(id: string, addedBy: string, ts: number): Expense {
   assert.ok(!/\{\w+\}/.test(assist))
   assert.equal(plainNudge.includes("Treasurer assist"), false)
   console.log("ok  hatian viewer roles + treasurer assist reminder")
+}
+
+{
+  const siargao = seed().lakads[0]
+  const timeline = tripActivityLog(siargao)
+  assert.ok(timeline.length >= siargao.expenses.length + siargao.payments.length)
+  assert.equal(timeline[0].ts >= timeline[timeline.length - 1].ts, true)
+  assert.ok(timeline.some((row) => row.id === "al-e-e6" && row.message.includes("Pending approval")))
+  assert.ok(timeline.some((row) => row.id === "al-pok-p1" && row.category === "bayad"))
+  assert.ok(timeline.some((row) => row.id === "al-p-p3" && row.message.includes("marked")))
+
+  const first = {
+    id: "al-1",
+    category: "gastos" as const,
+    icon: "🧾",
+    actorName: "Migs",
+    message: "Migs added 'Halo'",
+    ts: 200,
+  }
+  const logged = logActivity(siargao, first)
+  assert.equal(logged.activityLog?.[0]?.id, "al-1")
+  assert.equal(logActivity(logged, first).activityLog?.length, 1)
+
+  let capped = logged
+  for (let i = 0; i < ACTIVITY_LOG_CAP + 5; i++) {
+    capped = logActivity(capped, {
+      id: "al-cap-" + i,
+      category: "admin",
+      icon: "👑",
+      actorName: "Migs",
+      message: "cap " + i,
+      ts: 300 + i,
+    })
+  }
+  assert.equal(capped.activityLog?.length, ACTIVITY_LOG_CAP)
+  assert.equal(capped.activityLog?.[0]?.id, "al-cap-" + (ACTIVITY_LOG_CAP + 4))
+
+  const round = importTrip(exportTrip(logged))
+  assert.equal(round.activityLog?.[0]?.id, "al-1")
+  assert.deepEqual(round.activityLog, logged.activityLog)
+
+  const remote = {
+    id: "al-2",
+    category: "bayad" as const,
+    icon: "✅",
+    actorName: "Bea",
+    message: "Bea confirmed ₱1.00",
+    amount: 100,
+    ts: 400,
+  }
+  const merged = mergeActivityLog(logged.activityLog || [], [remote])
+  assert.equal(merged.map((row) => row.id).join(","), "al-2,al-1")
+
+  const tripMerged = mergeTrip(logged, { ...siargao, activityLog: [remote] }, true)
+  assert.equal(hasUnsyncedRows(logged, siargao), true)
+  assert.ok(tripMerged.activityLog?.some((row) => row.id === "al-1"))
+  assert.ok(tripMerged.activityLog?.some((row) => row.id === "al-2"))
+
+  const garbage = sanitizeTrip({
+    ...siargao,
+    activityLog: [
+      first,
+      { id: "bad", category: "nope", icon: "x", actorName: "A", message: "x", ts: 1 },
+      { id: "al-1", category: "admin", icon: "👑", actorName: "Dup", message: "dup", ts: 2 },
+    ],
+  })
+  assert.equal(garbage.activityLog?.map((row) => row.id).join(","), "al-1")
+
+  assert.equal(activityAgo(1000, 1000), "Just now")
+  assert.equal(activityAgo(1000, 1000 + 15 * 60_000), "15m ago")
+  assert.equal(activityAgo(1000, 1000 + 2 * DAY), "2d ago")
+
+  assert.equal(unreadActivityCount(siargao, 0), 0)
+  assert.ok(unreadActivityCount(siargao, 1) > 0)
+  assert.equal(defaultBarkadaHub(siargao, Date.now()), "roster")
+  assert.equal(defaultBarkadaHub({ ...siargao, expenses: [], payments: [] }, Date.now()), "roster")
+  assert.equal(defaultBarkadaHub(siargao, 1), "chismis")
+
+  const settled = {
+    ...siargao,
+    members: [
+      { id: "a", name: "A", gcash: "", claimedByUid: "1" },
+      { id: "b", name: "B", gcash: "", claimedByUid: "2" },
+    ],
+    treasurer: "a",
+    expenses: [
+      {
+        id: "e-hub",
+        title: "Halo",
+        amount: 10000,
+        sc: false,
+        payer: "a",
+        method: "even" as const,
+        ex: [],
+        items: [],
+        addedBy: "a",
+        status: "approved" as const,
+        ts: 1,
+      },
+    ],
+    payments: [
+      {
+        id: "p-hub",
+        from: "b",
+        to: "a",
+        amount: 5000,
+        status: "confirmed" as const,
+        ts: 2,
+        daysLate: 0,
+      },
+    ],
+    activityLog: [],
+    nudges: [],
+  }
+  assert.equal(defaultBarkadaHub(settled, Date.now()), "wrapped")
+  assert.equal(isDramaticActivity(remote), true)
+  assert.equal(isDramaticActivity(first), false)
+  const resibo = activityResiboText(
+    {
+      id: "al-sz-1",
+      category: "bayad",
+      icon: "👀",
+      actorName: "Jigs",
+      message: "Jigs seen-zoned Bea's reminder for ₱850.00",
+      amount: 85000,
+      ts: Date.parse("2026-10-23T14:14:00"),
+    },
+    { ...siargao, joinCode: "HIKE-26" },
+    Date.parse("2026-10-23T14:20:00"),
+    "https://barkada-split-bywn.vercel.app"
+  )
+  assert.ok(resibo.startsWith("📜 RESIBO ALERT (Barkada Split): 👀 Jigs SEEN ZONED"))
+  assert.ok(resibo.includes("Today at"))
+  assert.ok(resibo.includes("/join/HIKE-26"))
+  assert.ok(wrappedShareText(siargao, Date.now()).includes("LAKAD WRAPPED"))
+  console.log("ok  activity log backfill/sanitize/merge")
 }
 
 console.log("\nAll checks passed.")

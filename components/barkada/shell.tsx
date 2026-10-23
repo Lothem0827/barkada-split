@@ -13,7 +13,7 @@ import {
   UsersIcon,
 } from "lucide-react"
 
-import { BarkadaView } from "@/components/barkada/barkada-view"
+import { BarkadaView, useLastSeenActivity } from "@/components/barkada/barkada-view"
 import { OnboardingView } from "@/components/barkada/onboarding-view"
 import { ExpenseSheet } from "@/components/barkada/expense-sheet"
 import { GastosView } from "@/components/barkada/gastos-view"
@@ -45,6 +45,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/toast"
 import { t } from "@/lib/i18n"
+import { unreadActivityCount } from "@/lib/activity"
 import { consumeJustCreated } from "@/lib/join-code"
 import { isSeedTripId } from "@/lib/merge-trip"
 import { copyText } from "@/lib/snapshot"
@@ -95,7 +96,7 @@ export function TripPage({ tripId }: { tripId: string }) {
       router.replace("/")
       return
     }
-    if (state.activeId !== tripId) openTrip(tripId)
+    if (state.activeId !== tripId || state.tab === "home") openTrip(tripId)
   }, [tripId, state.onboarded, state.lakads, state.activeId, openTrip, router])
   if (!state.onboarded) return null
   return <AppFrame />
@@ -126,6 +127,8 @@ function AppFrame() {
   const pendingDeleteRef = useRef<{ id: string; timer: number } | null>(null)
 
   const liveInvite = !!(trip && !isSeedTripId(trip.id))
+  const lastSeen = useLastSeenActivity(trip?.id ?? null)
+  const unreadBarkada = trip ? unreadActivityCount(trip, lastSeen) : 0
 
   useEffect(() => {
     if (!trip || isSeedTripId(trip.id)) return
@@ -369,6 +372,7 @@ function AppFrame() {
               <BarkadaView
                 onCopy={copy}
                 onResetLock={(id, name) => openConfirm({ kind: "reset-lock", id, name })}
+                onInvite={openInvite}
               />
             ) : null}
           </TabsContent>
@@ -388,7 +392,12 @@ function AppFrame() {
                 disabled={disabled}
                 className="h-auto min-h-12 flex-col gap-0 py-1"
               >
-                <Icon />
+                <span className="relative">
+                  <Icon />
+                  {item.id === "barkada" && unreadBarkada > 0 ? (
+                    <span className="absolute -top-0.5 -right-1 size-2 animate-pulse rounded-full bg-destructive" />
+                  ) : null}
+                </span>
                 {t(lang, item.key)}
               </TabsTrigger>
             )

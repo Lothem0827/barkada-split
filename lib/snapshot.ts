@@ -1,9 +1,12 @@
 import { joinCodeFromId, normalizeJoinCode } from "@/lib/join-code"
 import {
+  ACTIVITY_LOG_CAP,
+  isActivityCategory,
   isEmergencyAction,
   isNudgeStatus,
   PERSONA_IDS,
   uiLang,
+  type ActivityLogItem,
   type EmergencyLogEntry,
   type Expense,
   type ExpenseEditProposal,
@@ -323,6 +326,44 @@ export function sanitizeTrip(raw: unknown): Trip {
     ]
   })
 
+  const seenAct = Object.create(null) as Record<string, 1>
+  const rawAct = Array.isArray(o.activityLog) ? o.activityLog : []
+  if (rawAct.length > 200) bad("too many activity log entries")
+  const activityLog: ActivityLogItem[] = rawAct
+    .flatMap((row) => {
+      if (!row || typeof row !== "object") return []
+      const entry = row as Record<string, unknown>
+      if (!isActivityCategory(entry.category)) return []
+      if (typeof entry.id !== "string" || !/^[A-Za-z0-9_-]{1,40}$/.test(entry.id) || seenAct[entry.id]) return []
+      if (!Number.isSafeInteger(entry.ts) || (entry.ts as number) < 0) return []
+      const message = cleanText(entry.message, 280)
+      const icon = typeof entry.icon === "string" ? entry.icon.replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 16) : ""
+      if (!message || !icon) return []
+      const actorId =
+        typeof entry.actorId === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(entry.actorId) ? entry.actorId : undefined
+      const amount =
+        entry.amount == null
+          ? undefined
+          : Number.isSafeInteger(entry.amount) && (entry.amount as number) >= 0
+            ? (entry.amount as number)
+            : undefined
+      seenAct[entry.id] = 1
+      return [
+        {
+          id: entry.id,
+          category: entry.category,
+          icon,
+          ...(actorId ? { actorId } : {}),
+          actorName: cleanText(entry.actorName, 40) || "?",
+          message,
+          ...(amount != null ? { amount } : {}),
+          ts: entry.ts as number,
+        },
+      ]
+    })
+    .sort((a, b) => b.ts - a.ts)
+    .slice(0, ACTIVITY_LOG_CAP)
+
   const id = idOf(o.id, "trip id")
   const name = str(o.name, 60, "trip name") || "Lakad"
   const rawCode = typeof o.joinCode === "string" ? normalizeJoinCode(o.joinCode) : ""
@@ -343,6 +384,7 @@ export function sanitizeTrip(raw: unknown): Trip {
     ...(deletedExpenseIds.length ? { deletedExpenseIds } : {}),
     ...(deletedPaymentIds.length ? { deletedPaymentIds } : {}),
     ...(emergencyLog.length ? { emergencyLog } : {}),
+    ...(activityLog.length ? { activityLog } : {}),
   }
 }
 

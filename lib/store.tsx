@@ -4,7 +4,24 @@ import { useMemo } from "react"
 import { create } from "zustand"
 import { createJSONStorage, persist } from "zustand/middleware"
 
-import { daysOwed, draftErrorMessage, draftToExpense } from "@/lib/calc"
+import {
+  emergencyActivity,
+  expenseAddedActivity,
+  expenseApprovedActivity,
+  expenseDeletedActivity,
+  expenseEditedActivity,
+  expenseRejectedActivity,
+  logSeatClaimed,
+  memberRemovedActivity,
+  memberRenamedActivity,
+  membersAddedActivity,
+  openModeActivity,
+  paymentConfirmedActivity,
+  paymentSentActivity,
+  roundToActivity,
+  seenZonedActivity,
+} from "@/lib/activity"
+import { daysOwed, draftErrorMessage, draftToExpense, totalOf } from "@/lib/calc"
 import { isValidGcash, sanitizeGcash } from "@/lib/gcash"
 import { bindSeat, excludeFromPastBills, matchesGcashLast4, resetMemberLock, seatStatus } from "@/lib/claim"
 import { hydrateState } from "@/lib/hydrate"
@@ -47,6 +64,7 @@ import {
   findTakenMember,
   isLang,
   isTreasurer,
+  logActivity,
   memberCanRemove,
   memberName,
   memberOf,
@@ -152,6 +170,10 @@ function applyPendingEdit(expense: Expense): Expense {
     pendingEdit: null,
     rejectionReason: undefined,
   }
+}
+
+function nowTs(state: AppState) {
+  return Date.now() + state.offset * DAY
 }
 
 function withTrip(state: AppState, tripId: string, updater: (trip: Trip) => Trip | null) {
@@ -402,15 +424,30 @@ export const useBarkadaStore = create<BarkadaStore>()(
             if (memberId === "new" && !profile.name) return { ok: false, message: t(state.lang, "needYourName") }
             if (memberId === "new" && incoming.members.length >= 60) return { ok: false, message: t(state.lang, "maxMembers") }
             const bound = bindSeat(incoming, memberId, profile, state.authUid, { name: profile.name, gcash: profile.gcash })
+            const ts = nowTs(state)
             if (!bound.ok) {
               const fallback = claimMember(incoming, profile, memberId)
               set({
-                state: upsertTrip(applyDraft(state, { ...draft, gcash: fallback.profile.gcash }), fallback.trip, fallback.as),
+                state: upsertTrip(
+                  applyDraft(state, { ...draft, gcash: fallback.profile.gcash }),
+                  logSeatClaimed(fallback.trip, fallback.as, ts),
+                  fallback.as
+                ),
               })
               return { ok: true, message: t(state.lang, "imported") + ": " + fallback.trip.name, tripId: fallback.trip.id }
             }
             set({
-              state: upsertTrip(applyDraft(state, { ...draft, gcash: bound.profile.gcash, name: bound.profile.name, avatar: draft.avatar, persona: draft.persona }), bound.trip, bound.as),
+              state: upsertTrip(
+                applyDraft(state, {
+                  ...draft,
+                  gcash: bound.profile.gcash,
+                  name: bound.profile.name,
+                  avatar: draft.avatar,
+                  persona: draft.persona,
+                }),
+                logSeatClaimed(bound.trip, bound.as, ts),
+                bound.as
+              ),
             })
             return { ok: true, message: t(state.lang, "imported") + ": " + bound.trip.name, tripId: bound.trip.id }
           } catch (error) {
@@ -510,7 +547,7 @@ export const useBarkadaStore = create<BarkadaStore>()(
 
           set({
             state: {
-              ...upsertTrip(state, bound.trip, bound.as, {
+              ...upsertTrip(state, logSeatClaimed(bound.trip, bound.as, nowTs(state)), bound.as, {
                 profile: bound.profile,
                 pinHashes,
               }),
@@ -530,17 +567,18 @@ export const useBarkadaStore = create<BarkadaStore>()(
           const { [key]: _, ...pinHashes } = state.pinHashes
           const actor = memberOf(active, state.as)
           const targetName = memberName(active, memberId)
+          const entry = {
+            id: uid("em"),
+            action: "lock_reset" as const,
+            actorMemberId: actor.id,
+            actorName: actor.name,
+            details: "Reset device lock for " + targetName,
+            ts: nowTs(state),
+          }
           set({
             state: {
               ...withTrip(state, active.id, (trip) =>
-                appendEmergencyLog(resetMemberLock(trip, memberId), {
-                  id: uid("em"),
-                  action: "lock_reset",
-                  actorMemberId: actor.id,
-                  actorName: actor.name,
-                  details: "Reset device lock for " + targetName,
-                  ts: Date.now() + state.offset * DAY,
-                })
+                logActivity(appendEmergencyLog(resetMemberLock(trip, memberId), entry), emergencyActivity(entry))
               ),
               pinHashes,
             },
@@ -608,20 +646,23 @@ export const useBarkadaStore = create<BarkadaStore>()(
             return { ok: false, message: t(state.lang, "whoPaid") }
           }
           const auto = active.open || isTreasurer(state, active)
+          const expense = {
+            ...parsed.e,
+            id: uid("e"),
+            addedBy: state.as,
+            status: (active.open || state.as === active.treasurer ? "approved" : "pending") as "approved" | "pending",
+            ts: nowTs(state),
+          }
           set({
-            state: withTrip(state, active.id, (item) => ({
-              ...item,
-              expenses: [
-                ...item.expenses,
+            state: withTrip(state, active.id, (item) =>
+              logActivity(
                 {
-                  ...parsed.e,
-                  id: uid("e"),
-                  addedBy: state.as,
-                  status: (item.open || state.as === item.treasurer ? "approved" : "pending") as "approved" | "pending",
-                  ts: Date.now() + state.offset * DAY,
+                  ...item,
+                  expenses: [...item.expenses, expense],
                 },
-              ],
-            })),
+                expenseAddedActivity(expense, memberName(item, state.as), state.as)
+              )
+            ),
           })
           return auto
             ? { ok: true, message: t(state.lang, "addedOk") }
@@ -638,11 +679,14 @@ export const useBarkadaStore = create<BarkadaStore>()(
           const parsed = draftToExpense(active, draft)
           if (parsed.errs.length) return { ok: false, message: draftErrorMessage(parsed.errs, state.lang) }
           const direct = active.open || isTreasurer(state, active)
-          const ts = Date.now() + state.offset * DAY
+          const ts = nowTs(state)
           const editor = memberName(active, state.as)
           const typed = (draft.note || "").trim()
+          const oldAmount = totalOf(existing)
+          const newAmount = totalOf(parsed.e)
           set({
-            state: withTrip(state, active.id, (item) => ({
+            state: withTrip(state, active.id, (item) => {
+              const next = {
               ...item,
               expenses: item.expenses.map((expense) => {
                 if (expense.id !== id || !canEditExpense(state, item, expense)) return expense
@@ -682,7 +726,12 @@ export const useBarkadaStore = create<BarkadaStore>()(
                   ...withAudit(expense, ts, state.as, auditNote, typed),
                 }
               }),
-            })),
+              }
+              return logActivity(
+                next,
+                expenseEditedActivity(existing, editor, state.as, oldAmount, newAmount, ts)
+              )
+            }),
           })
           if (direct) return { ok: true, message: t(state.lang, "updatedOk") }
           if (existing.status === "approved") {
@@ -699,21 +748,27 @@ export const useBarkadaStore = create<BarkadaStore>()(
           if (!active || !isTreasurer(state, active)) return { ok: false, message: t(state.lang, "onlyT") }
           const existing = active.expenses.find((expense) => expense.id === id)
           if (!existing || existing.status !== "pending") return { ok: false, message: t(state.lang, "onlyT") }
+          const ts = nowTs(state)
           set({
-            state: withTrip(state, active.id, (trip) => ({
-              ...trip,
-              expenses: trip.expenses.map((expense) =>
-                expense.id === id && expense.status === "pending"
-                  ? {
-                      ...expense,
-                      status: "approved" as const,
-                      rejectionReason: undefined,
-                      pendingEdit: null,
-                      ts: Date.now() + state.offset * DAY,
-                    }
-                  : expense
-              ),
-            })),
+            state: withTrip(state, active.id, (trip) =>
+              logActivity(
+                {
+                  ...trip,
+                  expenses: trip.expenses.map((expense) =>
+                    expense.id === id && expense.status === "pending"
+                      ? {
+                          ...expense,
+                          status: "approved" as const,
+                          rejectionReason: undefined,
+                          pendingEdit: null,
+                          ts,
+                        }
+                      : expense
+                  ),
+                },
+                expenseApprovedActivity(existing, memberName(trip, state.as), state.as, ts)
+              )
+            ),
           })
           return { ok: true, message: t(state.lang, "approved") }
         },
@@ -723,21 +778,31 @@ export const useBarkadaStore = create<BarkadaStore>()(
           if (!active || !isTreasurer(state, active)) return { ok: false, message: t(state.lang, "onlyT") }
           const count = active.expenses.filter((expense) => expense.status === "pending").length
           if (!count) return { ok: false, message: t(state.lang, "onlyT") }
+          const ts = nowTs(state)
           set({
-            state: withTrip(state, active.id, (trip) => ({
-              ...trip,
-              expenses: trip.expenses.map((expense) =>
-                expense.status === "pending"
-                  ? {
-                      ...expense,
-                      status: "approved" as const,
-                      rejectionReason: undefined,
-                      pendingEdit: null,
-                      ts: Date.now() + state.offset * DAY,
-                    }
-                  : expense
-              ),
-            })),
+            state: withTrip(state, active.id, (trip) => {
+              const actor = memberName(trip, state.as)
+              let next = {
+                ...trip,
+                expenses: trip.expenses.map((expense) =>
+                  expense.status === "pending"
+                    ? {
+                        ...expense,
+                        status: "approved" as const,
+                        rejectionReason: undefined,
+                        pendingEdit: null,
+                        ts,
+                      }
+                    : expense
+                ),
+              }
+              for (const expense of trip.expenses) {
+                if (expense.status === "pending") {
+                  next = logActivity(next, expenseApprovedActivity(expense, actor, state.as, ts))
+                }
+              }
+              return next
+            }),
           })
           return { ok: true, message: t(state.lang, "approved") }
         },
@@ -750,21 +815,26 @@ export const useBarkadaStore = create<BarkadaStore>()(
           if (!reasonText || !existing || existing.status !== "pending") {
             return { ok: false, message: t(state.lang, "onlyT") }
           }
-          const ts = Date.now() + state.offset * DAY
+          const ts = nowTs(state)
           set({
-            state: withTrip(state, active.id, (trip) => ({
-              ...trip,
-              expenses: trip.expenses.map((expense) => {
-                if (expense.id !== id || expense.status !== "pending") return expense
-                return {
-                  ...expense,
-                  status: "rejected" as const,
-                  rejectionReason: reasonText,
-                  pendingEdit: null,
-                  ...withAudit(expense, ts, state.as, `Returned: ${reasonText}`),
-                }
-              }),
-            })),
+            state: withTrip(state, active.id, (trip) =>
+              logActivity(
+                {
+                  ...trip,
+                  expenses: trip.expenses.map((expense) => {
+                    if (expense.id !== id || expense.status !== "pending") return expense
+                    return {
+                      ...expense,
+                      status: "rejected" as const,
+                      rejectionReason: reasonText,
+                      pendingEdit: null,
+                      ...withAudit(expense, ts, state.as, `Returned: ${reasonText}`),
+                    }
+                  }),
+                },
+                expenseRejectedActivity(existing, memberName(trip, state.as), state.as, reasonText, ts)
+              )
+            ),
           })
           return { ok: true, message: t(state.lang, "returnedToast") }
         },
@@ -774,20 +844,27 @@ export const useBarkadaStore = create<BarkadaStore>()(
           if (!active || !isTreasurer(state, active)) return { ok: false, message: t(state.lang, "onlyT") }
           const existing = active.expenses.find((expense) => expense.id === id)
           if (!existing?.pendingEdit) return { ok: false, message: t(state.lang, "onlyT") }
-          const ts = Date.now() + state.offset * DAY
+          const ts = nowTs(state)
           const auditNote = `Edit by ${memberName(active, existing.pendingEdit.editedBy)} approved by ${memberName(active, state.as)}`
+          const oldAmount = totalOf(existing)
+          const newAmount = totalOf(existing.pendingEdit)
           set({
-            state: withTrip(state, active.id, (trip) => ({
-              ...trip,
-              expenses: trip.expenses.map((expense) => {
-                if (expense.id !== id || !expense.pendingEdit) return expense
-                return {
-                  ...applyPendingEdit(expense),
-                  status: "approved" as const,
-                  ...withAudit(expense, ts, state.as, auditNote),
-                }
-              }),
-            })),
+            state: withTrip(state, active.id, (trip) =>
+              logActivity(
+                {
+                  ...trip,
+                  expenses: trip.expenses.map((expense) => {
+                    if (expense.id !== id || !expense.pendingEdit) return expense
+                    return {
+                      ...applyPendingEdit(expense),
+                      status: "approved" as const,
+                      ...withAudit(expense, ts, state.as, auditNote),
+                    }
+                  }),
+                },
+                expenseEditedActivity(existing, memberName(trip, state.as), state.as, oldAmount, newAmount, ts)
+              )
+            ),
           })
           return { ok: true, message: t(state.lang, "editApprovedToast") }
         },
@@ -797,19 +874,30 @@ export const useBarkadaStore = create<BarkadaStore>()(
           if (!active || !isTreasurer(state, active)) return { ok: false, message: t(state.lang, "onlyT") }
           const existing = active.expenses.find((expense) => expense.id === id)
           if (!existing?.pendingEdit) return { ok: false, message: t(state.lang, "onlyT") }
-          const ts = Date.now() + state.offset * DAY
+          const ts = nowTs(state)
           set({
-            state: withTrip(state, active.id, (trip) => ({
-              ...trip,
-              expenses: trip.expenses.map((expense) => {
-                if (expense.id !== id || !expense.pendingEdit) return expense
-                return {
-                  ...expense,
-                  pendingEdit: null,
-                  ...withAudit(expense, ts, state.as, "Edit rejected — kept original approved bill"),
-                }
-              }),
-            })),
+            state: withTrip(state, active.id, (trip) =>
+              logActivity(
+                {
+                  ...trip,
+                  expenses: trip.expenses.map((expense) => {
+                    if (expense.id !== id || !expense.pendingEdit) return expense
+                    return {
+                      ...expense,
+                      pendingEdit: null,
+                      ...withAudit(expense, ts, state.as, "Edit rejected — kept original approved bill"),
+                    }
+                  }),
+                },
+                expenseRejectedActivity(
+                  existing,
+                  memberName(trip, state.as),
+                  state.as,
+                  "kept original approved bill",
+                  ts
+                )
+              )
+            ),
           })
           return { ok: true, message: t(state.lang, "editKeptToast") }
         },
@@ -822,8 +910,15 @@ export const useBarkadaStore = create<BarkadaStore>()(
           if (!active || (!isTreasurer(state, active) && !ownPending && !ownRejected)) {
             return { ok: false, message: t(state.lang, "onlyT") }
           }
+          const ts = nowTs(state)
           set({
-            state: withTrip(state, active.id, (trip) => omitExpense(trip, id)),
+            state: withTrip(state, active.id, (trip) => {
+              const gone = trip.expenses.find((item) => item.id === id)
+              const next = gone
+                ? logActivity(trip, expenseDeletedActivity(gone, memberName(trip, state.as), state.as, ts))
+                : trip
+              return omitExpense(next, id)
+            }),
           })
           return { ok: true, message: t(state.lang, ownPending ? "withdrawn" : "deleted") }
         },
@@ -837,24 +932,30 @@ export const useBarkadaStore = create<BarkadaStore>()(
           if (active.payments.some((payment) => payment.status === "sent" && payment.from === from && payment.to === to)) {
             return { ok: false, message: t(state.lang, "onlyT") }
           }
-          const stamp = Date.now() + state.offset * DAY
+          const stamp = nowTs(state)
+          const payment = {
+            id: uid("p"),
+            from,
+            to,
+            amount,
+            status: "sent" as const,
+            ts: stamp,
+            daysLate: daysOwed(active, from, stamp),
+          }
           set({
-            state: withTrip(state, active.id, (trip) => ({
-              ...trip,
-              payments: [
-                ...trip.payments,
+            state: withTrip(state, active.id, (trip) =>
+              logActivity(
                 {
-                  id: uid("p"),
-                  from,
-                  to,
-                  amount,
-                  status: "sent",
-                  ts: stamp,
-                  daysLate: daysOwed(trip, from, stamp),
+                  ...trip,
+                  payments: [
+                    ...trip.payments,
+                    { ...payment, daysLate: daysOwed(trip, from, stamp) },
+                  ],
+                  nudges: resolvePairNudges(trip.nudges, from, to, trip.treasurer),
                 },
-              ],
-              nudges: resolvePairNudges(trip.nudges, from, to, trip.treasurer),
-            })),
+                paymentSentActivity(trip, payment)
+              )
+            ),
           })
           return { ok: true, message: t(state.lang, "markedSent") + " " + memberName(active, to) }
         },
@@ -865,14 +966,19 @@ export const useBarkadaStore = create<BarkadaStore>()(
           const payment = active.payments.find((item) => item.id === id)
           if (!payment || payment.status !== "sent") return { ok: false, message: t(state.lang, "onlyT") }
           if (state.as !== payment.to && !isTreasurer(state, active)) return { ok: false, message: t(state.lang, "onlyT") }
+          const ts = nowTs(state)
+          const confirmed = { ...payment, status: "confirmed" as const, ts }
           set({
-            state: withTrip(state, active.id, (trip) => ({
-              ...trip,
-              payments: trip.payments.map((item) =>
-                item.id === id ? { ...item, status: "confirmed" as const, ts: Date.now() + state.offset * DAY } : item
-              ),
-              nudges: resolvePairNudges(trip.nudges, payment.from, payment.to, trip.treasurer),
-            })),
+            state: withTrip(state, active.id, (trip) =>
+              logActivity(
+                {
+                  ...trip,
+                  payments: trip.payments.map((item) => (item.id === id ? confirmed : item)),
+                  nudges: resolvePairNudges(trip.nudges, payment.from, payment.to, trip.treasurer),
+                },
+                paymentConfirmedActivity(trip, confirmed, state.as)
+              )
+            ),
           })
           return { ok: true, message: t(state.lang, "confirmedToast") + " " + memberName(active, payment.from) }
         },
@@ -926,10 +1032,15 @@ export const useBarkadaStore = create<BarkadaStore>()(
           if (!active || !nudge) return { ok: false, message: t(state.lang, "onlyT") }
           if (state.as !== nudge.to && !isTreasurer(state, active)) return { ok: false, message: t(state.lang, "onlyT") }
           set({
-            state: withTrip(state, active.id, (trip) => ({
-              ...trip,
-              nudges: (trip.nudges || []).map((item) => (item.id === id ? applyNudgeResolution(item, status) : item)),
-            })),
+            state: withTrip(state, active.id, (trip) => {
+              const next = {
+                ...trip,
+                nudges: (trip.nudges || []).map((item) => (item.id === id ? applyNudgeResolution(item, status) : item)),
+              }
+              return status === "seen_zoned"
+                ? logActivity(next, seenZonedActivity(trip, { ...nudge, ts: nowTs(state) }))
+                : next
+            }),
           })
           return { ok: true, message: t(state.lang, status === "seen_zoned" ? "seenZoneToast" : "nudgeReadToast") }
         },
@@ -973,13 +1084,18 @@ export const useBarkadaStore = create<BarkadaStore>()(
             }
           }
           const memberId = uid("m")
+          const ts = nowTs(state)
           set({
             state: withTrip(state, active.id, (trip) => {
-              const next = {
+              const rostered = {
                 ...trip,
                 members: [...trip.members, { id: memberId, name: trimmed, gcash: number, claimedByUid: null }],
               }
-              return lateComer && trip.expenses.length > 0 ? excludeFromPastBills(next, memberId) : next
+              const next = lateComer && trip.expenses.length > 0 ? excludeFromPastBills(rostered, memberId) : rostered
+              return logActivity(
+                next,
+                membersAddedActivity(memberName(trip, state.as), state.as, [trimmed], memberId, ts)
+              )
             }),
           })
           return { ok: true, message: t(state.lang, "addedToBarkada").replace("{name}", trimmed) }
@@ -1001,13 +1117,22 @@ export const useBarkadaStore = create<BarkadaStore>()(
               message: takenNicknameMessage(state.lang, taken.name, taken.id === active.treasurer),
             }
           }
+          const previous = memberOf(active, id)
+          const ts = nowTs(state)
           set({
-            state: withTrip(state, active.id, (trip) => ({
-              ...trip,
-              members: trip.members.map((member) =>
-                member.id === id ? { ...member, name: trimmed, gcash: number } : member
-              ),
-            })),
+            state: withTrip(state, active.id, (trip) => {
+              const next = {
+                ...trip,
+                members: trip.members.map((member) =>
+                  member.id === id ? { ...member, name: trimmed, gcash: number } : member
+                ),
+              }
+              if (previous.name === trimmed) return next
+              return logActivity(
+                next,
+                memberRenamedActivity(memberName(trip, state.as), state.as, previous.name, trimmed, id, ts)
+              )
+            }),
           })
           return { ok: true, message: t(state.lang, "saved") }
         },
@@ -1019,12 +1144,18 @@ export const useBarkadaStore = create<BarkadaStore>()(
           const name = memberOf(active, id).name
           const key = pinKey(active.id, id)
           const { [key]: _, ...pinHashes } = state.pinHashes
+          const ts = nowTs(state)
           set({
             state: {
-              ...withTrip(state, active.id, (trip) => ({
-                ...trip,
-                members: trip.members.filter((member) => member.id !== id),
-              })),
+              ...withTrip(state, active.id, (trip) =>
+                logActivity(
+                  {
+                    ...trip,
+                    members: trip.members.filter((member) => member.id !== id),
+                  },
+                  memberRemovedActivity(memberName(trip, state.as), state.as, name, id, ts)
+                )
+              ),
               pinHashes,
               as: state.as === id ? active.treasurer : state.as,
             },
@@ -1053,34 +1184,39 @@ export const useBarkadaStore = create<BarkadaStore>()(
           const { state } = get()
           const active = activeTrip(state)
           if (!active || !isTreasurer(state, active)) return { ok: false, message: t(state.lang, "onlyT") }
+          const ts = nowTs(state)
           set({
-            state: withTrip(state, active.id, (trip) => ({
-              ...trip,
-              open,
-              expenses: open
-                ? trip.expenses.map((expense) => {
-                    if (expense.status === "rejected") return expense
-                    const ts = Date.now() + state.offset * DAY
-                    if (expense.pendingEdit) {
-                      return {
-                        ...applyPendingEdit(expense),
-                        status: "approved" as const,
-                        ...withAudit(expense, ts, state.as, "Edit applied when trip opened"),
-                      }
-                    }
-                    if (expense.status === "pending") {
-                      return {
-                        ...expense,
-                        status: "approved" as const,
-                        rejectionReason: undefined,
-                        pendingEdit: null,
-                        ts,
-                      }
-                    }
-                    return expense
-                  })
-                : trip.expenses,
-            })),
+            state: withTrip(state, active.id, (trip) =>
+              logActivity(
+                {
+                  ...trip,
+                  open,
+                  expenses: open
+                    ? trip.expenses.map((expense) => {
+                        if (expense.status === "rejected") return expense
+                        if (expense.pendingEdit) {
+                          return {
+                            ...applyPendingEdit(expense),
+                            status: "approved" as const,
+                            ...withAudit(expense, ts, state.as, "Edit applied when trip opened"),
+                          }
+                        }
+                        if (expense.status === "pending") {
+                          return {
+                            ...expense,
+                            status: "approved" as const,
+                            rejectionReason: undefined,
+                            pendingEdit: null,
+                            ts,
+                          }
+                        }
+                        return expense
+                      })
+                    : trip.expenses,
+                },
+                openModeActivity(memberName(trip, state.as), state.as, open, ts)
+              )
+            ),
           })
           return { ok: true, message: open ? t(state.lang, "openOnToast") : t(state.lang, "openOffToast") }
         },
@@ -1088,7 +1224,12 @@ export const useBarkadaStore = create<BarkadaStore>()(
           const { state } = get()
           const active = activeTrip(state)
           if (!active || !isTreasurer(state, active)) return { ok: false, message: t(state.lang, "onlyT") }
-          set({ state: withTrip(state, active.id, (trip) => ({ ...trip, roundTo })) })
+          const ts = nowTs(state)
+          set({
+            state: withTrip(state, active.id, (trip) =>
+              logActivity( { ...trip, roundTo }, roundToActivity(memberName(trip, state.as), state.as, roundTo, ts))
+            ),
+          })
           return { ok: true, message: t(state.lang, "saved") }
         },
         handoff: (id) => {
@@ -1098,19 +1239,17 @@ export const useBarkadaStore = create<BarkadaStore>()(
           if (!active.members.some((member) => member.id === id)) return { ok: false, message: t(state.lang, "onlyT") }
           const outgoing = memberOf(active, active.treasurer)
           const incoming = memberOf(active, id)
+          const entry = {
+            id: uid("em"),
+            action: "crown_passed" as const,
+            actorMemberId: outgoing.id,
+            actorName: outgoing.name,
+            details: "Passed crown to " + incoming.name,
+            ts: nowTs(state),
+          }
           set({
             state: withTrip(state, active.id, (trip) =>
-              appendEmergencyLog(
-                { ...trip, treasurer: id },
-                {
-                  id: uid("em"),
-                  action: "crown_passed",
-                  actorMemberId: outgoing.id,
-                  actorName: outgoing.name,
-                  details: "Passed crown to " + incoming.name,
-                  ts: Date.now() + state.offset * DAY,
-                }
-              )
+              logActivity(appendEmergencyLog({ ...trip, treasurer: id }, entry), emergencyActivity(entry))
             ),
           })
           return { ok: true, message: t(state.lang, "crownPassToast").replace("{name}", incoming.name) }
@@ -1145,10 +1284,12 @@ export const useBarkadaStore = create<BarkadaStore>()(
             actorMemberId: incoming.id,
             actorName: incoming.name,
             details: "Emergency takeover due to unresponsive treasurer — " + trimmed.slice(0, 180),
-            ts: Date.now() + state.offset * DAY,
+            ts: nowTs(state),
           }
           set({
-            state: withTrip(state, active.id, (trip) => appendEmergencyLog({ ...trip, treasurer: newMemberId }, entry)),
+            state: withTrip(state, active.id, (trip) =>
+              logActivity(appendEmergencyLog({ ...trip, treasurer: newMemberId }, entry), emergencyActivity(entry))
+            ),
           })
           if (!isSeedTripId(active.id)) {
             void broadcastEmergencyTakeover(active.id, { treasurer: newMemberId, entry })

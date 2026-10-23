@@ -1,4 +1,6 @@
+import { mergeActivityLog } from "@/lib/activity"
 import {
+  activityLogOf,
   emergencyLogOf,
   higherNudgeStatus,
   SEED_TRIP_IDS,
@@ -113,6 +115,7 @@ export function mergeTrip(local: Trip, remote: Trip, dirty: boolean): Trip {
   const deletedExpenseIds = unionIds(local.deletedExpenseIds, remote.deletedExpenseIds)
   const deletedPaymentIds = unionIds(local.deletedPaymentIds, remote.deletedPaymentIds)
   const emergencyLog = mergeEmergencyLog(emergencyLogOf(local), emergencyLogOf(remote))
+  const activityLog = mergeActivityLog(activityLogOf(local), activityLogOf(remote))
   const next: Trip = {
     ...(dirty ? local : remote),
     joinCode: (dirty ? local.joinCode : remote.joinCode) || local.joinCode || remote.joinCode,
@@ -125,6 +128,8 @@ export function mergeTrip(local: Trip, remote: Trip, dirty: boolean): Trip {
   }
   if (emergencyLog.length) next.emergencyLog = emergencyLog
   else delete next.emergencyLog
+  if (activityLog.length) next.activityLog = activityLog
+  else delete next.activityLog
   return next
 }
 
@@ -161,7 +166,8 @@ export function hasUnsyncedRows(local: Trip, written: Trip) {
     extraIds(local.deletedExpenseIds, written.deletedExpenseIds) ||
     extraIds(local.deletedPaymentIds, written.deletedPaymentIds) ||
     nudgesUnsynced(local.nudges, written.nudges) ||
-    emergencyLogUnsynced(emergencyLogOf(local), emergencyLogOf(written))
+    emergencyLogUnsynced(emergencyLogOf(local), emergencyLogOf(written)) ||
+    newerOrMissing(activityLogOf(local), activityLogOf(written))
   )
 }
 

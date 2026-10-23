@@ -314,9 +314,9 @@ export function ProfileSheet({ open, onOpenChange }: { open: boolean; onOpenChan
             </Button>
           </section>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex flex-wrap items-center gap-2">
+          <Card className="shrink-0">
+            <CardHeader className="min-w-0">
+              <CardTitle className="flex min-w-0 flex-col items-start gap-1.5">
                 {t(lang, "accountSection")}
                 {linked ? (
                   <Badge variant="secondary">🟢 {t(lang, "syncedGoogle")}</Badge>

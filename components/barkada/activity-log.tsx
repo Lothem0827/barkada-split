@@ -1,0 +1,155 @@
+"use client"
+
+import { useMemo, useState } from "react"
+
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { activityAgo, activityResiboText, isDramaticActivity, tripActivityLog } from "@/lib/activity"
+import { peso } from "@/lib/calc"
+import { t } from "@/lib/i18n"
+import { type ActivityCategory, type ActivityLogItem, type Lang, type Trip } from "@/lib/types"
+
+const PAGE = 8
+const PILL =
+  "min-h-[36px] shrink-0 rounded-full px-3 text-xs font-bold transition active:scale-95"
+const FILTERS: {
+  id: "all" | ActivityCategory
+  label: "activityAll" | "activityGastos" | "activityBayad" | "activityAdmin"
+  empty: "activityEmpty" | "activityEmptyGastos" | "activityEmptyBayad" | "activityEmptyAdmin"
+  icon: string
+}[] = [
+  { id: "all", label: "activityAll", empty: "activityEmpty", icon: "✨" },
+  { id: "gastos", label: "activityGastos", empty: "activityEmptyGastos", icon: "🧾" },
+  { id: "bayad", label: "activityBayad", empty: "activityEmptyBayad", icon: "💸" },
+  { id: "admin", label: "activityAdmin", empty: "activityEmptyAdmin", icon: "👑" },
+]
+
+function ActivityMessage({ item }: { item: ActivityLogItem }) {
+  const name = item.actorName
+  const index = name ? item.message.indexOf(name) : -1
+  if (index < 0) return item.message
+  return (
+    <>
+      {item.message.slice(0, index)}
+      <span className="font-semibold text-foreground">{name}</span>
+      {item.message.slice(index + name.length)}
+    </>
+  )
+}
+
+export function ActivityLogCard({
+  trip,
+  now,
+  lang,
+  onCopy,
+}: {
+  trip: Trip
+  now: number
+  lang: Lang
+  onCopy: (text: string, label: string) => boolean | void | Promise<boolean | void>
+}) {
+  const [filter, setFilter] = useState<"all" | ActivityCategory>("all")
+  const [expanded, setExpanded] = useState(false)
+  const items = useMemo(() => tripActivityLog(trip), [trip])
+  const counts = useMemo(
+    () => ({
+      all: items.length,
+      gastos: items.filter((item) => item.category === "gastos").length,
+      bayad: items.filter((item) => item.category === "bayad").length,
+      admin: items.filter((item) => item.category === "admin").length,
+    }),
+    [items]
+  )
+  const active = FILTERS.find((pill) => pill.id === filter) ?? FILTERS[0]
+  const filtered = filter === "all" ? items : items.filter((item) => item.category === filter)
+  const shown = expanded ? filtered : filtered.slice(0, PAGE)
+
+  return (
+    <Card size="sm">
+      <CardHeader className="gap-2">
+        <ToggleGroup
+          variant="outline"
+          spacing={0}
+          className="no-scrollbar flex w-full items-center gap-1.5 overflow-x-auto py-1"
+          value={[filter]}
+          onValueChange={(next) => {
+            const picked = next[next.length - 1]
+            if (picked === "all" || picked === "gastos" || picked === "bayad" || picked === "admin") {
+              setFilter(picked)
+              setExpanded(false)
+            }
+          }}
+        >
+          {FILTERS.map((pill) => (
+            <ToggleGroupItem key={pill.id} value={pill.id} className={PILL}>
+              {pill.icon} {t(lang, pill.label)} ({counts[pill.id]})
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+      </CardHeader>
+      <CardContent>
+        {shown.length ? (
+          <ol className="relative flex flex-col gap-3 pl-1">
+            <span aria-hidden className="absolute top-2 bottom-2 left-[15px] w-px bg-border" />
+            {shown.map((item) => (
+              <li key={item.id} className="relative flex gap-3">
+                <span className="relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-sm ring-2 ring-card">
+                  {item.icon}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm leading-snug text-muted-foreground">
+                      <ActivityMessage item={item} />
+                    </p>
+                    {isDramaticActivity(item) ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="min-h-[36px] shrink-0 px-2 text-xs"
+                        onClick={() => void onCopy(activityResiboText(item, trip, now), t(lang, "resiboCopied"))}
+                      >
+                        {t(lang, "copyResibo")}
+                      </Button>
+                    ) : (
+                      <time className="shrink-0 text-xs text-muted-foreground" dateTime={new Date(item.ts).toISOString()}>
+                        {activityAgo(item.ts, now)}
+                      </time>
+                    )}
+                  </div>
+                  {isDramaticActivity(item) ? (
+                    <time className="text-xs text-muted-foreground" dateTime={new Date(item.ts).toISOString()}>
+                      {activityAgo(item.ts, now)}
+                    </time>
+                  ) : null}
+                  {item.amount != null ? (
+                    <Badge variant="secondary" className="mt-1 font-mono">
+                      {peso(item.amount)}
+                    </Badge>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="text-sm text-muted-foreground">{t(lang, active.empty)}</p>
+        )}
+        {filtered.length > PAGE ? (
+          <Button
+            size="touch"
+            variant="ghost"
+            className="mt-3 w-full min-h-[40px]"
+            onClick={() => setExpanded((value) => !value)}
+          >
+            {expanded
+              ? t(lang, "activityShowLess")
+              : t(lang, "activityShowAll")
+                  .replace("{n}", String(filtered.length))
+                  .replace("{category}", t(lang, active.label))}
+          </Button>
+        ) : null}
+      </CardContent>
+    </Card>
+  )
+}

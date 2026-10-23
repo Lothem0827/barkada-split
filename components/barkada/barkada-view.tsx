@@ -3,29 +3,93 @@
 import { useEffect, useRef, useState } from "react"
 import { CameraIcon, PencilIcon } from "lucide-react"
 
+import { ActivityLogCard } from "@/components/barkada/activity-log"
 import { ArmButton } from "@/components/barkada/arm-button"
 import { WrappedCard } from "@/components/barkada/wrapped-card"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { toast } from "@/components/ui/toast"
+import {
+  defaultBarkadaHub,
+  latestActivityTs,
+  unreadActivityCount,
+  wrappedShareText,
+  type BarkadaHub,
+} from "@/lib/activity"
 import { sanitizeGcash } from "@/lib/gcash"
-import { barkadaCountLabel, t } from "@/lib/i18n"
+import { t } from "@/lib/i18n"
 import { inviteUrl } from "@/lib/join-code"
 import { splitNameDraft } from "@/lib/member-names"
 import { isSeedTripId } from "@/lib/merge-trip"
 import { shareOrCopy } from "@/lib/snapshot"
 import { useBarkada } from "@/lib/store"
-import { memberCanRemove } from "@/lib/types"
+import { initial, memberCanRemove } from "@/lib/types"
+
+const SEEN_KEY = "barkada-seen-activity"
+const seenListeners = new Set<() => void>()
+
+function readSeen(): Record<string, number> {
+  if (typeof window === "undefined") return {}
+  try {
+    const raw = window.localStorage.getItem(SEEN_KEY)
+    const parsed = raw ? JSON.parse(raw) : {}
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function writeSeen(map: Record<string, number>) {
+  if (typeof window === "undefined") return
+  window.localStorage.setItem(SEEN_KEY, JSON.stringify(map))
+}
+
+export function peekLastSeen(tripId: string, now = Date.now()) {
+  const map = readSeen()
+  if (map[tripId] != null) return map[tripId]
+  if (typeof window === "undefined") return now
+  writeSeen({ ...map, [tripId]: now })
+  return now
+}
+
+export function markActivitySeen(tripId: string, ts: number) {
+  const map = readSeen()
+  if ((map[tripId] ?? 0) >= ts) {
+    seenListeners.forEach((fn) => fn())
+    return
+  }
+  writeSeen({ ...map, [tripId]: ts })
+  seenListeners.forEach((fn) => fn())
+}
+
+export function useLastSeenActivity(tripId: string | null) {
+  const [seen, setSeen] = useState(() => (tripId ? peekLastSeen(tripId) : 0))
+  useEffect(() => {
+    const sync = () => setSeen(tripId ? peekLastSeen(tripId) : 0)
+    sync()
+    seenListeners.add(sync)
+    return () => {
+      seenListeners.delete(sync)
+    }
+  }, [tripId])
+  return seen
+}
+
+const HUBS: BarkadaHub[] = ["roster", "chismis", "wrapped"]
+const hubMemo = new Map<string, BarkadaHub>()
 
 export function BarkadaView({
   onCopy,
   onResetLock,
+  onInvite,
 }: {
   onCopy: (text: string, label: string) => boolean | void | Promise<boolean | void>
   onResetLock: (id: string, name: string) => void
+  onInvite: (memberId?: string) => void
 }) {
   const {
     state,
@@ -38,7 +102,11 @@ export function BarkadaView({
     saveProfile,
     setScreenshotMode,
   } = useBarkada()
-  const { lang, as, profile, persona, screenshotMode } = state
+  const { lang, as, profile, persona, screenshotMode, tab } = state
+  const lastSeen = useLastSeenActivity(trip?.id ?? null)
+  const [hub, setHub] = useState<BarkadaHub>(() =>
+    trip && hubMemo.has(trip.id) ? hubMemo.get(trip.id)! : "roster"
+  )
   const [friendName, setFriendName] = useState("")
   const [friendGcash, setFriendGcash] = useState("")
   const [addError, setAddError] = useState("")
@@ -60,9 +128,42 @@ export function BarkadaView({
     }
   }, [removeMember])
 
+  function selectHub(next: BarkadaHub) {
+    if (trip) hubMemo.set(trip.id, next)
+    setHub(next)
+    if (next === "chismis" && trip) {
+      markActivitySeen(trip.id, Math.max(Date.now(), latestActivityTs(trip)))
+    }
+  }
+
+  useEffect(() => {
+    if (!trip) return
+    if (tab !== "barkada") {
+      hubMemo.delete(trip.id)
+      return
+    }
+    if (hubMemo.has(trip.id)) {
+      setHub(hubMemo.get(trip.id)!)
+      return
+    }
+    const next = defaultBarkadaHub(trip, peekLastSeen(trip.id))
+    hubMemo.set(trip.id, next)
+    setHub(next)
+    if (next === "chismis") markActivitySeen(trip.id, Math.max(Date.now(), latestActivityTs(trip)))
+  }, [tab, trip?.id])
+
+  const latest = trip ? latestActivityTs(trip) : 0
+  useEffect(() => {
+    if (tab !== "barkada" || hub !== "chismis" || !trip) return
+    markActivitySeen(trip.id, Math.max(Date.now(), latest))
+  }, [tab, hub, trip?.id, latest])
+
   if (!trip) return null
   const live = trip
   const liveInvite = !isSeedTripId(live.id)
+  const joined = live.members.filter((member) => member.claimedByUid).length
+  const waiting = live.members.length - joined
+  const unread = unreadActivityCount(live, lastSeen)
 
   function notify(message: string, timeout = 1800) {
     toast.add({ title: message, timeout })
@@ -131,15 +232,12 @@ export function BarkadaView({
     notify(result.message)
   }
 
-  async function shareInvite() {
+  async function shareWrapped() {
     const url = inviteUrl(live.joinCode)
-    const message = t(lang, "inviteMsg")
-      .replace("{name}", live.name)
-      .replace("{url}", url)
-      .replace("{code}", live.joinCode)
-    const result = await shareOrCopy(url, live.name, message)
-    if (result === "copied") notify(t(lang, "inviteCopied"))
-    else if (result === "manual") await onCopy(message, t(lang, "inviteCopied"))
+    const message = wrappedShareText(live, now)
+    const result = await shareOrCopy(url, live.name + " Wrapped", message)
+    if (result === "copied") notify(t(lang, "wrappedShared"))
+    else if (result === "manual") await onCopy(message, t(lang, "wrappedShared"))
   }
 
   function queueRemove(id: string) {
@@ -175,35 +273,62 @@ export function BarkadaView({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-baseline justify-between gap-2">
-        <h2 className="font-heading text-lg font-semibold">🧾 {t(lang, "wrapped")}</h2>
-        <span className="text-sm text-muted-foreground">{barkadaCountLabel(lang, live.members)}</span>
-      </div>
-      <p className="text-sm text-muted-foreground">{t(lang, "wrappedHint")}</p>
-      <WrappedCard trip={live} now={now} lang={lang} />
-      <Button size="touch" className="w-full" onClick={() => setScreenshotMode(true)}>
-        <CameraIcon data-icon="inline-start" />
-        {t(lang, "screenshot")}
-      </Button>
-
       {!screenshotMode ? (
-        <section className="flex flex-col gap-4">
-          <h2 className="font-heading text-lg font-semibold">👥 {t(lang, "rosterSection")}</h2>
+        <div className="sticky top-0 z-10 -mx-4 bg-background px-4 pb-1">
+          <div className="grid min-h-[44px] grid-cols-3 gap-1 rounded-2xl border border-border bg-muted p-1">
+            {HUBS.map((id) => {
+              const active = hub === id
+              const label =
+                id === "roster"
+                  ? t(lang, "hubRoster") + " (" + live.members.length + ")"
+                  : id === "chismis"
+                    ? t(lang, "hubChismis")
+                    : t(lang, "hubWrapped")
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  aria-pressed={active}
+                  className={`min-h-[36px] rounded-xl px-1 text-xs font-bold transition active:scale-95 ${
+                    active ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
+                  }`}
+                  onClick={() => selectHub(id)}
+                >
+                  {label}
+                  {id === "chismis" && unread > 0 ? (
+                    <span className="ml-1 text-destructive">🔴 {unread}</span>
+                  ) : null}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ) : null}
 
+      {hub === "roster" && !screenshotMode ? (
+        <section className="flex flex-col gap-4">
           {liveInvite ? (
             <div className="flex flex-col gap-2 rounded-xl border bg-card p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <Badge variant="secondary" className="h-8 px-3 font-mono text-sm tracking-[0.18em]">
                   {live.joinCode}
                 </Badge>
-                <Button size="touch" onClick={() => void shareInvite()}>
+                <Button size="touch" onClick={() => onInvite()}>
                   {t(lang, "shareInviteLink")}
                 </Button>
               </div>
-              <p className="text-sm text-muted-foreground">{barkadaCountLabel(lang, live.members)}</p>
+              <p className="text-sm text-muted-foreground">
+                {t(lang, "joinedWaiting")
+                  .replace("{joined}", String(joined))
+                  .replace("{waiting}", String(waiting))}
+              </p>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">{barkadaCountLabel(lang, live.members)}</p>
+            <p className="text-sm text-muted-foreground">
+              {t(lang, "joinedWaiting")
+                .replace("{joined}", String(joined))
+                .replace("{waiting}", String(waiting))}
+            </p>
           )}
 
           {treasurer ? (
@@ -273,6 +398,9 @@ export function BarkadaView({
                 const canEdit = treasurer || member.id === as
                 return (
                   <Item key={member.id} className="min-h-[56px] items-center">
+                    <Avatar size="sm">
+                      <AvatarFallback>{initial(member.name)}</AvatarFallback>
+                    </Avatar>
                     <ItemContent>
                       <ItemTitle className="flex-wrap">
                         {renameId === member.id ? (
@@ -362,7 +490,7 @@ export function BarkadaView({
                         <Button
                           size="touch"
                           className="min-h-[38px]"
-                          onClick={() => void onCopy(inviteUrl(live.joinCode, "", member.id), t(lang, "inviteCopied"))}
+                          onClick={() => onInvite(member.id)}
                         >
                           {t(lang, "inviteSeat")}
                         </Button>
@@ -402,6 +530,28 @@ export function BarkadaView({
                 )
               })}
           </ItemGroup>
+        </section>
+      ) : null}
+
+      {hub === "chismis" && !screenshotMode ? (
+        <ActivityLogCard trip={live} now={now} lang={lang} onCopy={onCopy} />
+      ) : null}
+
+      {hub === "wrapped" || screenshotMode ? (
+        <section className="flex flex-col gap-4">
+          <p className="text-sm text-muted-foreground">{t(lang, "wrappedHint")}</p>
+          <WrappedCard trip={live} now={now} lang={lang} />
+          {!screenshotMode ? (
+            <div className="grid grid-cols-2 gap-2">
+              <Button size="touch" onClick={() => setScreenshotMode(true)}>
+                <CameraIcon data-icon="inline-start" />
+                {t(lang, "screenshot")}
+              </Button>
+              <Button size="touch" variant="outline" onClick={() => void shareWrapped()}>
+                {t(lang, "shareWrapped")}
+              </Button>
+            </div>
+          ) : null}
         </section>
       ) : null}
     </div>
