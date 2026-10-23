@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { PlusIcon, XIcon } from "lucide-react"
 
 import { AmountBumpers } from "@/components/barkada/amount-bumpers"
@@ -28,7 +28,7 @@ import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Toggle } from "@/components/ui/toggle"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { draftErrorMessage, draftToExpense, parsePeso, peso, plain, sharesOf, totalOf } from "@/lib/calc"
+import { draftToExpense, parsePeso, peso, plain, sharesOf, totalOf } from "@/lib/calc"
 import { toast } from "@/components/ui/toast"
 import { t, type CopyKey } from "@/lib/i18n"
 import { useBarkada } from "@/lib/store"
@@ -60,6 +60,14 @@ export function ExpenseSheet({
 }) {
   const { state, trip, addExpense, editExpense } = useBarkada()
   const [error, setError] = useState("")
+  const [saving, setSaving] = useState(false)
+  const savingRef = useRef(false)
+
+  useEffect(() => {
+    if (open) return
+    savingRef.current = false
+    setSaving(false)
+  }, [open])
 
   const preview = useMemo(() => {
     if (!trip || !draft) return null
@@ -93,8 +101,13 @@ export function ExpenseSheet({
   }
 
   function save() {
+    if (savingRef.current) return
+    savingRef.current = true
+    setSaving(true)
     const result = liveDraft.id ? editExpense(liveDraft.id, liveDraft) : addExpense(liveDraft)
     if (!result.ok) {
+      savingRef.current = false
+      setSaving(false)
       setError(result.message)
       return
     }
@@ -113,6 +126,18 @@ export function ExpenseSheet({
   }
 
   const shares = parsed.e.amount > 0 ? sharesOf(trip, { ...parsed.e, id: "preview", addedBy: state.as, status: "approved", ts: 0 }) : {}
+  const kasali = trip.members.filter((member) => (shares[member.id] || 0) > 0)
+  const free = trip.members.filter((member) => parsed.e.ex.includes(member.id) || (parsed.e.amount > 0 && !(shares[member.id] > 0)))
+  const head = kasali[0] ? shares[kasali[0].id] : 0
+  const patak =
+    parsed.e.amount > 0
+      ? free.length && (draft.method === "exclude" || draft.method === "libre")
+        ? t(lang, "patakLibre")
+            .replace("{amt}", peso(head))
+            .replace("{n}", String(kasali.length))
+            .replace("{free}", free.map((member) => member.name).join(", "))
+        : t(lang, "patakHead").replace("{amt}", peso(head)).replace("{n}", String(kasali.length))
+      : ""
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} swipeDirection="down" showSwipeHandle>
@@ -140,6 +165,9 @@ export function ExpenseSheet({
                   placeholder="Sisig sa Aling Nena's"
                   onChange={(event) => patch({ title: event.target.value })}
                 />
+                {draft.title.length >= 64 ? (
+                  <FieldDescription>{t(lang, "charsLeft").replace("{n}", String(80 - draft.title.length))}</FieldDescription>
+                ) : null}
               </Field>
               {draft.method !== "item" ? (
                 <Field>
@@ -234,25 +262,33 @@ export function ExpenseSheet({
                     const allOn = item.eaters.length === trip.members.length
                     return (
                       <div key={index} className="flex flex-col gap-2 rounded-xl border p-3">
-                        <div className="grid grid-cols-[minmax(0,1fr)_6.5rem_2.75rem] gap-2">
-                          <Input
-                            enterKeyHint="next"
-                            maxLength={60}
-                            value={item.name}
-                            placeholder={`${t(lang, "item")} ${index + 1}`}
-                            aria-label={`${t(lang, "item")} ${index + 1}`}
-                            onChange={(event) => {
-                              const items = draft.items.slice()
-                              items[index] = { ...item, name: event.target.value }
-                              patch({ items })
-                            }}
-                          />
+                        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_110px_auto] gap-2">
+                          <div className="min-w-0">
+                            <Input
+                              enterKeyHint="next"
+                              maxLength={60}
+                              className="min-w-0"
+                              value={item.name}
+                              placeholder={`${t(lang, "item")} ${index + 1}`}
+                              aria-label={`${t(lang, "item")} ${index + 1}`}
+                              onChange={(event) => {
+                                const items = draft.items.slice()
+                                items[index] = { ...item, name: event.target.value }
+                                patch({ items })
+                              }}
+                            />
+                            {item.name.length >= 48 ? (
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {t(lang, "charsLeft").replace("{n}", String(60 - item.name.length))}
+                              </p>
+                            ) : null}
+                          </div>
                           <Input
                             type="text"
                             inputMode="decimal"
                             pattern="[0-9.]*"
                             enterKeyHint="done"
-                            className="font-mono"
+                            className="w-[110px] font-mono"
                             value={item.price}
                             placeholder="0.00"
                             aria-label={`${t(lang, "amount")} ${index + 1}`}
@@ -365,8 +401,6 @@ export function ExpenseSheet({
                       ))}
                   </div>
                 </div>
-              ) : parsed.errs.length ? (
-                <p className="text-sm text-muted-foreground">{draftErrorMessage(parsed.errs, lang)}</p>
               ) : null}
               {draft.method === "item" && draft.receipt.trim() ? (
                 !Number.isFinite(receiptCents) || !(receiptCents > 0) ? (
@@ -401,12 +435,15 @@ export function ExpenseSheet({
         </div>
         {trip.members.length ? (
           <DrawerFooter>
+            {patak ? (
+              <p className="rounded-full bg-muted px-3 py-2 text-center text-sm font-medium wrap-break-word">{patak}</p>
+            ) : null}
             <p className="text-center text-xs text-muted-foreground">
               {willPend
                 ? t(lang, "treasModeHint").replace("{name}", memberName(trip, trip.treasurer))
                 : t(lang, "autoApprovedHint")}
             </p>
-            <Button size="cta" onClick={save}>
+            <Button size="cta" disabled={saving} onClick={save}>
               {draft.id ? t(lang, "save") : willPend ? t(lang, "submitApproval") : t(lang, "saveApprove")}
             </Button>
           </DrawerFooter>

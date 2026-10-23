@@ -6,8 +6,10 @@ import { XIcon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { FieldDescription } from "@/components/ui/field"
+import { toast } from "@/components/ui/toast"
 import { t, takenNicknameMessage } from "@/lib/i18n"
 import {
+  MEMBER_NAME_MAX,
   commitNames,
   hasNameSeparator,
   splitNameDraft,
@@ -59,15 +61,23 @@ export function BarkadaMemberInput({
     onDraftChange?.(value)
   }
 
-  function applyCommit(next: string[], taken: string | null, vsYou: boolean) {
-    namesRef.current = next
-    onChange(next)
-    if (taken) {
+  function applyCommit(result: { names: string[]; flash: string | null; vsYou: boolean; added: number; skipped: string[] }) {
+    namesRef.current = result.names
+    onChange(result.names)
+    if (result.flash) {
       setFlash((current) => ({
-        key: nameKey(taken),
-        vsYou,
+        key: nameKey(result.flash!),
+        vsYou: result.vsYou,
         tick: (current?.tick ?? 0) + 1,
       }))
+    }
+    if (result.skipped.length) {
+      toast.add({
+        title: t(lang, "rosterAdded")
+          .replace("{n}", String(result.added))
+          .replace("{skipped}", result.skipped.join(", ")),
+        timeout: 3200,
+      })
     }
   }
 
@@ -78,7 +88,7 @@ export function BarkadaMemberInput({
       return namesRef.current
     }
     const result = commitNames(self.name, namesRef.current, complete)
-    applyCommit(result.names, result.flash, result.vsYou)
+    applyCommit(result)
     setDraftValue(rest)
     return result.names
   }
@@ -164,7 +174,7 @@ export function BarkadaMemberInput({
             autoCorrect="off"
             spellCheck={false}
             autoComplete="off"
-            maxLength={40}
+            maxLength={MEMBER_NAME_MAX}
             value={draft}
             placeholder={names.length || self.name.trim() ? "" : t(lang, "obAddFriend")}
             aria-describedby={`${inputId}-tip`}
@@ -237,7 +247,7 @@ export function BarkadaMemberInput({
               className="h-11 rounded-full px-3.5 active:scale-[0.97]"
               onClick={() => {
                 const result = commitNames(self.name, names, [name])
-                applyCommit(result.names, result.flash, result.vsYou)
+                applyCommit(result)
                 inputRef.current?.focus()
               }}
             >

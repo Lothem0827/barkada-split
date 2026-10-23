@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/card"
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { balances, fmtDate, namesList, peso, sharesOf, totalOf, wrappedStats } from "@/lib/calc"
-import { t, type CopyKey } from "@/lib/i18n"
+import { barkadaCountLabel, t, type CopyKey } from "@/lib/i18n"
 import { isSeedTripId } from "@/lib/merge-trip"
 import { useBarkada } from "@/lib/store"
 import { canEditExpense, initial, isTreasurer, memberName, type Expense, type Lang, type Trip } from "@/lib/types"
@@ -171,8 +171,10 @@ function ExpenseCard({
           {trip.members
             .filter((member) => (shares[member.id] || 0) > 0)
             .map((member) => (
-              <Badge key={member.id} variant={member.id === as ? "default" : "outline"}>
-                {member.name} {peso(shares[member.id])}
+              <Badge key={member.id} variant={member.id === as ? "default" : "outline"} className="max-w-[140px]">
+                <span className="truncate">
+                  {member.name} {peso(shares[member.id])}
+                </span>
               </Badge>
             ))}
           {expense.method === "libre" && expense.ex.length ? (
@@ -296,6 +298,7 @@ export function GastosView({
   onRejectEdit,
   onDelete,
   onInvite,
+  hiddenExpenseId,
 }: {
   onEdit: (id: string) => void
   onApprove: (id: string) => void
@@ -305,6 +308,7 @@ export function GastosView({
   onRejectEdit: (id: string) => void
   onDelete: (id: string) => void
   onInvite: () => void
+  hiddenExpenseId?: string | null
 }) {
   const { state, trip, now } = useBarkada()
   if (!trip) return null
@@ -319,13 +323,14 @@ export function GastosView({
         ? `${t(lang, "youAreOwed")}: ${peso(net)}`
         : t(lang, "youEven")
   const newest = (a: Expense, b: Expense) => b.ts - a.ts
-  const pending = trip.expenses.filter((expense) => expense.status === "pending").slice().sort(newest)
+  const visible = trip.expenses.filter((expense) => expense.id !== hiddenExpenseId)
+  const pending = visible.filter((expense) => expense.status === "pending").slice().sort(newest)
   const proposals = treasurer
-    ? trip.expenses.filter((expense) => expense.status === "approved" && expense.pendingEdit).slice().sort(newest)
+    ? visible.filter((expense) => expense.status === "approved" && expense.pendingEdit).slice().sort(newest)
     : []
-  const rejected = trip.expenses.filter((expense) => expense.status === "rejected").slice().sort(newest)
+  const rejected = visible.filter((expense) => expense.status === "rejected").slice().sort(newest)
   const proposalIds = new Set(proposals.map((expense) => expense.id))
-  const approved = trip.expenses
+  const approved = visible
     .filter((expense) => expense.status === "approved" && !proposalIds.has(expense.id))
     .slice()
     .sort(newest)
@@ -334,12 +339,6 @@ export function GastosView({
   const waiting = trip.members.filter((member) => !member.claimedByUid)
   const claimed = trip.members.filter((member) => member.claimedByUid)
   const showInvite = waiting.length > 0 && !isSeedTripId(trip.id)
-  const waitingLabel =
-    waiting
-      .slice(0, 2)
-      .map((member) => member.name)
-      .join(", ") +
-    (waiting.length > 2 ? ` +${waiting.length - 2} ${t(lang, "waitingJoin")}` : waiting.length ? ` ${t(lang, "waitingJoin")}` : "")
 
   return (
     <div className="flex flex-col gap-4">
@@ -374,9 +373,7 @@ export function GastosView({
                 ))}
               </div>
               <p className="mt-1 truncate text-xs text-muted-foreground">
-                {claimed.length ? claimed.map((member) => member.name).slice(0, 2).join(", ") : ""}
-                {claimed.length && waiting.length ? " · " : ""}
-                {waitingLabel}
+                {barkadaCountLabel(lang, trip.members)}
               </p>
             </div>
             <Button size="touch" className="min-h-[40px] shrink-0" onClick={onInvite}>

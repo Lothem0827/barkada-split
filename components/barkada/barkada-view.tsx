@@ -4,7 +4,7 @@ import { CameraIcon } from "lucide-react"
 
 import { WrappedCard } from "@/components/barkada/wrapped-card"
 import { Button } from "@/components/ui/button"
-import { t } from "@/lib/i18n"
+import { barkadaCountLabel, t } from "@/lib/i18n"
 import { useBarkada } from "@/lib/store"
 
 export function BarkadaView() {
@@ -18,7 +18,7 @@ export function BarkadaView() {
       <div className="flex items-baseline justify-between gap-2">
         <h2 className="font-heading text-lg font-semibold">{t(lang, "wrapped")}</h2>
         <span className="text-sm text-muted-foreground">
-          {trip.members.length} {t(lang, "members").toLowerCase()}
+          {barkadaCountLabel(lang, trip.members)}
         </span>
       </div>
       <p className="text-sm text-muted-foreground">{t(lang, "wrappedHint")}</p>

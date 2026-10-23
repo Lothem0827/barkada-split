@@ -96,7 +96,9 @@ export function balances(trip: Trip) {
 }
 
 function roundPay(amount: number, roundTo: number) {
-  return roundTo ? Math.max(roundTo, Math.round(amount / roundTo) * roundTo) : amount
+  if (!roundTo) return amount
+  if (amount < roundTo / 2) return amount
+  return Math.round(amount / roundTo) * roundTo
 }
 
 export function transfers(trip: Trip): Transfer[] {
@@ -115,11 +117,14 @@ export function transfers(trip: Trip): Transfer[] {
   let j = 0
   while (i < debt.length && j < credit.length) {
     const amount = Math.min(debt[i][1], credit[j][1])
+    const pay = roundPay(amount, trip.roundTo || 0)
     out.push({
       from: debt[i][0],
       to: credit[j][0],
       amount,
-      pay: roundPay(amount, trip.roundTo || 0),
+      pay,
+      exactAmount: amount,
+      roundingDiff: pay - amount,
     })
     debt[i][1] -= amount
     credit[j][1] -= amount

@@ -5,7 +5,8 @@ import { create } from "zustand"
 import { createJSONStorage, persist } from "zustand/middleware"
 
 import { daysOwed, draftErrorMessage, draftToExpense } from "@/lib/calc"
-import { bindSeat, resetMemberLock, seatStatus } from "@/lib/claim"
+import { isValidGcash, sanitizeGcash } from "@/lib/gcash"
+import { bindSeat, excludeFromPastBills, matchesGcashLast4, resetMemberLock, seatStatus } from "@/lib/claim"
 import { hydrateState } from "@/lib/hydrate"
 import { t, takenNicknameMessage } from "@/lib/i18n"
 import { makeJoinCode } from "@/lib/join-code"
@@ -260,7 +261,7 @@ type BarkadaStore = {
   undoPayment: (id: string) => ActionResult
   sendNudge: (debtorId: string, creditorId: string, amount: number, persona: Persona, message: string) => ActionResult
   resolveNudge: (id: string, status: Exclude<NudgeStatus, "unread">) => ActionResult
-  addMember: (name: string, gcash: string) => ActionResult
+  addMember: (name: string, gcash: string, lateComer?: boolean) => ActionResult
   editMember: (id: string, name: string, gcash: string) => ActionResult
   removeMember: (id: string) => ActionResult
   setGcash: (gcash: string) => ActionResult
@@ -343,9 +344,11 @@ export const useBarkadaStore = create<BarkadaStore>()(
         createTrip: (name, you, others, gcash) => {
           const { state } = get()
           const tripName = name.trim().slice(0, 60)
-          const youName = you.trim().slice(0, 40)
+          const youName = you.trim().slice(0, 24)
           if (!tripName) return { ok: false, message: t(state.lang, "needTripName") }
           if (!youName) return { ok: false, message: t(state.lang, "needYourName") }
+          const number = sanitizeGcash(gcash)
+          if (!isValidGcash(number)) return { ok: false, message: t(state.lang, "badGcash") }
           const parsed = collectUniqueNicknames(youName, others)
           if (!parsed.ok) {
             return { ok: false, message: takenNicknameMessage(state.lang, parsed.existing, parsed.vsYou) }
@@ -354,10 +357,10 @@ export const useBarkadaStore = create<BarkadaStore>()(
           const members = names.map((memberName, index) => ({
             id: uid("m"),
             name: memberName,
-            gcash: index === 0 ? gcash.trim().slice(0, 30) : "",
+            gcash: index === 0 ? number : "",
             claimedByUid: index === 0 ? state.authUid || null : null,
           }))
-          const created = newTripBase(tripName, members, { gcash: gcash.trim().slice(0, 30), open: false, roundTo: 0 }, state)
+          const created = newTripBase(tripName, members, { gcash: number, open: false, roundTo: 0 }, state)
           set({
             state: upsertTrip(state, created, created.treasurer),
           })
@@ -367,8 +370,9 @@ export const useBarkadaStore = create<BarkadaStore>()(
           const { state } = get()
           const tripName = name.trim().slice(0, 60)
           if (!tripName) return { ok: false, message: t(state.lang, "needTripName") }
-          const you = draft.name.trim().slice(0, 40)
+          const you = draft.name.trim().slice(0, 24)
           if (!you) return { ok: false, message: t(state.lang, "needYourName") }
+          if (!isValidGcash(draft.gcash)) return { ok: false, message: t(state.lang, "badGcash") }
           const parsed = collectUniqueNicknames(you, friends)
           if (!parsed.ok) {
             return { ok: false, message: takenNicknameMessage(state.lang, parsed.existing, parsed.vsYou) }
@@ -411,7 +415,8 @@ export const useBarkadaStore = create<BarkadaStore>()(
         },
         saveProfile: (draft) => {
           const { state } = get()
-          const next = applyDraft(state, draft)
+          if (!isValidGcash(draft.gcash)) return { ok: false, message: t(state.lang, "badGcash") }
+          const next = applyDraft(state, { ...draft, gcash: sanitizeGcash(draft.gcash) })
           const synced = syncProfileToClaimedMembers(next.lakads, next.profile, {
             authUid: next.authUid,
             as: next.as,
@@ -457,7 +462,8 @@ export const useBarkadaStore = create<BarkadaStore>()(
               const localHash = state.pinHashes[pinKey(trip.id, memberId)]
               const localOk = pin && localHash ? await pinsMatch(pin, trip.id + ":" + memberId, localHash) : false
               const remoteOk = pin ? await verifySeatPinRemote(trip.id, memberId, pin) : false
-              if (!localOk && !remoteOk) {
+              const last4Ok = pin ? matchesGcashLast4(member.gcash, pin) : false
+              if (!localOk && !remoteOk && !last4Ok) {
                 return { ok: false, message: t(lang, pin ? "pinWrong" : "seatLocked") }
               }
               trip = {
@@ -946,10 +952,12 @@ export const useBarkadaStore = create<BarkadaStore>()(
                 : t(state.lang, "undoToast"),
           }
         },
-        addMember: (name, gcash) => {
+        addMember: (name, gcash, lateComer = false) => {
           const { state } = get()
-          const trimmed = name.trim().slice(0, 40)
+          const trimmed = name.trim().slice(0, 24)
           if (!trimmed) return { ok: false, message: t(state.lang, "needMemberName") }
+          const number = sanitizeGcash(gcash)
+          if (!isValidGcash(number)) return { ok: false, message: t(state.lang, "badGcash") }
           const active = activeTrip(state)
           if (!active || !isTreasurer(state, active)) return { ok: false, message: t(state.lang, "onlyT") }
           if (active.members.length >= 60) return { ok: false, message: t(state.lang, "maxMembers") }
@@ -960,18 +968,24 @@ export const useBarkadaStore = create<BarkadaStore>()(
               message: takenNicknameMessage(state.lang, taken.name, taken.id === active.treasurer),
             }
           }
+          const memberId = uid("m")
           set({
-            state: withTrip(state, active.id, (trip) => ({
-              ...trip,
-              members: [...trip.members, { id: uid("m"), name: trimmed, gcash: gcash.trim().slice(0, 30), claimedByUid: null }],
-            })),
+            state: withTrip(state, active.id, (trip) => {
+              const next = {
+                ...trip,
+                members: [...trip.members, { id: memberId, name: trimmed, gcash: number, claimedByUid: null }],
+              }
+              return lateComer && trip.expenses.length > 0 ? excludeFromPastBills(next, memberId) : next
+            }),
           })
           return { ok: true, message: t(state.lang, "addedToBarkada").replace("{name}", trimmed) }
         },
         editMember: (id, name, gcash) => {
           const { state } = get()
-          const trimmed = name.trim().slice(0, 40)
+          const trimmed = name.trim().slice(0, 24)
           if (!trimmed) return { ok: false, message: t(state.lang, "needMemberName") }
+          const number = sanitizeGcash(gcash)
+          if (!isValidGcash(number)) return { ok: false, message: t(state.lang, "badGcash") }
           const active = activeTrip(state)
           if (!active) return { ok: false, message: t(state.lang, "onlyT") }
           if (!isTreasurer(state, active) && state.as !== id) return { ok: false, message: t(state.lang, "onlyT") }
@@ -987,7 +1001,7 @@ export const useBarkadaStore = create<BarkadaStore>()(
             state: withTrip(state, active.id, (trip) => ({
               ...trip,
               members: trip.members.map((member) =>
-                member.id === id ? { ...member, name: trimmed, gcash: gcash.trim().slice(0, 30) } : member
+                member.id === id ? { ...member, name: trimmed, gcash: number } : member
               ),
             })),
           })
@@ -1017,7 +1031,9 @@ export const useBarkadaStore = create<BarkadaStore>()(
           const { state } = get()
           const active = activeTrip(state)
           if (!active || !isTreasurer(state, active)) return { ok: false, message: t(state.lang, "onlyT") }
-          set({ state: withTrip(state, active.id, (trip) => ({ ...trip, gcash: gcash.trim().slice(0, 30) })) })
+          const number = sanitizeGcash(gcash)
+          if (!isValidGcash(number)) return { ok: false, message: t(state.lang, "badGcash") }
+          set({ state: withTrip(state, active.id, (trip) => ({ ...trip, gcash: number })) })
           return { ok: true, message: t(state.lang, "tripGcashSaved") }
         },
         setOpen: (open) => {

@@ -14,6 +14,7 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui
 import { Input } from "@/components/ui/input"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { toast } from "@/components/ui/toast"
+import { sanitizeGcash } from "@/lib/gcash"
 import { linkGoogleCopyKey, t, type CopyKey } from "@/lib/i18n"
 import { sampleReminder } from "@/lib/reminders"
 import { useBarkada, useBarkadaStore } from "@/lib/store"
@@ -253,7 +254,7 @@ export function ProfileSheet({ open, onOpenChange }: { open: boolean; onOpenChan
             <FieldGroup>
               <Field>
                 <FieldLabel>{t(lang, "obAvatar")}</FieldLabel>
-                <div className="no-scrollbar -mx-4 min-w-0 overflow-x-auto overscroll-x-contain snap-x px-4">
+                <div className="no-scrollbar -mx-4 min-w-0 overflow-x-auto overscroll-x-contain snap-x px-1 py-1">
                   <div className="flex w-max gap-2">
                     {AVATARS.map((item) => (
                       <Button
@@ -275,7 +276,7 @@ export function ProfileSheet({ open, onOpenChange }: { open: boolean; onOpenChan
                 <Input
                   id="profile-nick"
                   enterKeyHint="next"
-                  maxLength={40}
+                  maxLength={24}
                   value={name}
                   placeholder={t(lang, "obNickPh")}
                   onChange={(event) => setName(event.target.value)}
@@ -289,10 +290,10 @@ export function ProfileSheet({ open, onOpenChange }: { open: boolean; onOpenChan
                   inputMode="tel"
                   enterKeyHint="next"
                   className="font-mono"
-                  maxLength={30}
+                  maxLength={16}
                   value={gcash}
                   placeholder="0917-XXX-XXXX"
-                  onChange={(event) => setGcash(event.target.value)}
+                  onChange={(event) => setGcash(sanitizeGcash(event.target.value))}
                 />
               </Field>
               <Field>
@@ -422,7 +423,7 @@ export function ProfileSheet({ open, onOpenChange }: { open: boolean; onOpenChan
                   ))}
                 </ToggleGroup>
               </div>
-              <FieldDescription>{sampleReminder(persona, lang).split("\n")[0]}</FieldDescription>
+              <FieldDescription>{sampleReminder(persona, lang, name || profile.name || "Bea").split("\n")[0]}</FieldDescription>
             </Field>
             <Field>
               <FieldLabel>

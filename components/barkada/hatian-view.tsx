@@ -65,7 +65,19 @@ export function HatianView({
   const [cardPersona, setCardPersona] = useState<Record<string, Persona>>({})
   const [hatianScope, setHatianScope] = useState<HatianScope>(treasurer ? "all" : "mine")
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null)
+  const [payBusy, setPayBusy] = useState(false)
+  const payBusyRef = useRef(false)
   const cardRefs = useRef<Record<string, HTMLElement | null>>({})
+
+  function runPay(fn: () => { ok: boolean; message: string }) {
+    if (payBusyRef.current) return
+    payBusyRef.current = true
+    setPayBusy(true)
+    const result = fn()
+    toast.add({ title: result.message, timeout: 1800 })
+    payBusyRef.current = false
+    setPayBusy(false)
+  }
 
   useEffect(() => {
     setHatianScope(treasurer ? "all" : "mine")
@@ -201,7 +213,16 @@ export function HatianView({
                   {toName}
                 </p>
                 <div className="flex shrink-0 items-center gap-2">
-                  <span className="font-mono font-semibold tabular-nums">{peso(row.pay)}</span>
+                  <div className="flex flex-col items-end">
+                    <span className="font-mono font-semibold tabular-nums">{peso(row.pay)}</span>
+                    {row.roundingDiff !== 0 ? (
+                      <span className="max-w-[160px] text-right text-[11px] leading-tight text-muted-foreground">
+                        {t(lang, "butalBadge")
+                          .replace("{exact}", peso(row.exactAmount))
+                          .replace("{diff}", (row.roundingDiff > 0 ? "+" : "") + peso(row.roundingDiff))}
+                      </span>
+                    ) : null}
+                  </div>
                   <Badge variant="secondary">
                     {pending ? t(lang, "sentShort") : sulk.emoji + " " + sulk.name}
                   </Badge>
@@ -232,10 +253,10 @@ export function HatianView({
               className={openKey === key ? "ring-2 ring-ring" : undefined}
             >
               <CardHeader>
-                <CardTitle className="flex flex-wrap items-center gap-1">
-                  {fromName}
+                <CardTitle className="flex min-w-0 flex-wrap items-center gap-1">
+                  <span className="max-w-[140px] truncate">{fromName}</span>
                   <span className="text-muted-foreground">→</span>
-                  {toName}
+                  <span className="max-w-[140px] truncate">{toName}</span>
                 </CardTitle>
                 <CardAction>
                   <span className="font-mono text-lg font-semibold tabular-nums">{peso(row.pay)}</span>
@@ -253,9 +274,11 @@ export function HatianView({
                     {t(lang, "treasOversight").replace("{from}", fromName).replace("{to}", toName)}
                   </Badge>
                 )}
-                {row.pay !== row.amount ? (
+                {row.roundingDiff !== 0 ? (
                   <CardDescription>
-                    {t(lang, "exact")}: {peso(row.amount)}
+                    {t(lang, "butalBadge")
+                      .replace("{exact}", peso(row.exactAmount))
+                      .replace("{diff}", (row.roundingDiff > 0 ? "+" : "") + peso(row.roundingDiff))}
                   </CardDescription>
                 ) : null}
               </CardHeader>
@@ -299,7 +322,9 @@ export function HatianView({
                 ) : null}
                 {role === "debtor" && pending ? (
                   <Badge variant="secondary" className="w-fit whitespace-normal">
-                    {t(lang, "sentWaitConfirm").replace("{name}", toName)}
+                    {t(lang, "sentWaitConfirm")
+                      .replace("{amt}", peso(pending.amount))
+                      .replace("{name}", toName)}
                   </Badge>
                 ) : null}
                 {showConfirm && pending ? (
@@ -310,26 +335,18 @@ export function HatianView({
                         ? "min-h-[46px] bg-l0 text-white hover:bg-l0/90"
                         : "min-h-[46px]"
                     }
-                    onClick={() => {
-                      const result = confirmPayment(pending.id)
-                      toast.add({ title: result.message, timeout: 1800 })
-                    }}
+                    disabled={payBusy}
+                    onClick={() => runPay(() => confirmPayment(pending.id))}
                   >
-                    {role === "creditor"
-                      ? t(lang, "confirmAmtFrom")
-                          .replace("{amt}", peso(row.pay))
-                          .replace("{name}", fromName)
-                      : t(lang, "confirmReceived")}
+                    {t(lang, "confirmReceived").replace("{amt}", peso(pending.amount))}
                   </Button>
                 ) : null}
                 {showMarkPaid && role === "debtor" ? (
                   <Button
                     size="cta"
                     className="min-h-[46px]"
-                    onClick={() => {
-                      const result = markPaid(row.from, row.to, row.amount)
-                      toast.add({ title: result.message, timeout: 1800 })
-                    }}
+                    disabled={payBusy}
+                    onClick={() => runPay(() => markPaid(row.from, row.to, row.amount))}
                   >
                     {t(lang, "paidAmt").replace("{amt}", peso(row.pay))}
                   </Button>
@@ -356,10 +373,8 @@ export function HatianView({
                   <Button
                     size="cta"
                     className="min-h-[46px]"
-                    onClick={() => {
-                      const result = markPaid(row.from, row.to, row.amount)
-                      toast.add({ title: result.message, timeout: 1800 })
-                    }}
+                    disabled={payBusy}
+                    onClick={() => runPay(() => markPaid(row.from, row.to, row.amount))}
                   >
                     {t(lang, "markPaidCta")}
                   </Button>
@@ -369,10 +384,8 @@ export function HatianView({
                     size="touch"
                     variant="ghost"
                     className="w-full text-muted-foreground"
-                    onClick={() => {
-                      const result = markPaid(row.from, row.to, row.amount)
-                      toast.add({ title: result.message, timeout: 1800 })
-                    }}
+                    disabled={payBusy}
+                    onClick={() => runPay(() => markPaid(row.from, row.to, row.amount))}
                   >
                     {t(lang, "markPaidBehalf")}
                   </Button>

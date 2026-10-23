@@ -1,4 +1,27 @@
-import { uid, type Member, type Profile, type Trip } from "@/lib/types"
+import { digits, uid, type Member, type Profile, type Trip } from "@/lib/types"
+
+export function gcashLast4(gcash: string) {
+  const only = digits(gcash).replace(/\D/g, "")
+  return only.length >= 4 ? only.slice(-4) : ""
+}
+
+export function matchesGcashLast4(gcash: string, secret: string) {
+  const last4 = gcashLast4(gcash)
+  return last4.length === 4 && secret === last4
+}
+
+export function excludeFromPastBills(trip: Trip, memberId: string): Trip {
+  const ts = Date.now()
+  return {
+    ...trip,
+    expenses: trip.expenses.map((expense) => {
+      if (expense.method === "item") return expense
+      const ex = expense.ex.includes(memberId) ? expense.ex : [...expense.ex, memberId]
+      if (ex === expense.ex) return expense
+      return expense.method === "even" ? { ...expense, method: "exclude" as const, ex, ts } : { ...expense, ex, ts }
+    }),
+  }
+}
 
 export function seatStatus(member: Member, uidValue: string) {
   if (!member.claimedByUid) return "free" as const

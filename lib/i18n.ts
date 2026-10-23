@@ -82,6 +82,12 @@ const copy = {
     memberName: "Name",
     memberAddHint:
       "Heads up: they're included in existing even-split and excluded-split expenses. Edit those if they weren't there.",
+    lateComerFuture: "🆕 Future Gastos Only (Just Arrived)",
+    lateComerPast: "🔄 Include in All Past Pantay Bills",
+    memberAddHintFuture: "Past pantay bills stay with the original crew. New friend only splits future gastos.",
+    rename: "Rename",
+    messengerBanner:
+      "⚠️ Inside Messenger Browser! Tap [⋯] in the corner → Open in External Browser (Safari/Chrome) so your seat stays saved on your phone.",
     emptyHome: "No lakads yet. Make one! 🏝️",
     emptyGastos: "No expenses yet. Who floated the first bill? 🧾",
     needPeople: "Add people before you add an expense.",
@@ -355,7 +361,7 @@ const copy = {
     heySeat: "Hey {name}! Tap below to claim your spot in {trip}.",
     notMe: "Di ako si {name} (Pick another name)",
     taken: "Taken",
-    takenHint: "Switch devices? Enter your 4-digit PIN or ask {name} to reset your lock.",
+    takenHint: "Switch devices? Enter your 4-digit PIN or last 4 of your GCash, or ask {name} to reset your lock.",
     claimGcashHint: "Your GCash # (so friends can pay you back easily)",
     claimAs: "Pasok sa Lakad as {name}!",
     payerMe: "{name} (Ako)",
@@ -393,6 +399,7 @@ const copy = {
     pinBad: "PIN must be 4 digits.",
     pinWrong: "Wrong PIN. Try again, or ask the treasurer to Reset Lock.",
     pinAsk: "This seat is claimed. Enter your PIN if it's you.",
+    pinAskGcash: "This seat is claimed. Enter your PIN or the last 4 digits of your GCash.",
     seatClaimed: "You're in as",
     lockReset: "Unlocked seat for",
     resetLock: "Reset Lock",
@@ -471,12 +478,12 @@ const copy = {
     copyForGc: "📋 Copy for GC",
     copyNumOf: "📋 Copy {name}'s #",
     paidAmt: "🙋‍♂️ I Paid {amt}",
-    sentWaitConfirm: "⏳ Payment sent — waiting for {name} to confirm",
+    sentWaitConfirm: "⏳ {amt} sent — waiting for {name} to confirm",
     nudgedYou: "📣 {name} nudged you!",
     confirmAmtFrom: "✓ Confirm {amt} received from {name}",
     markPaidBehalf: "Mark paid on their behalf",
     markPaidCta: "🙋‍♂️ Mark Paid",
-    confirmReceived: "✓ Confirm Received",
+    confirmReceived: "✓ Confirm {amt} Received",
     treasOversight: "👑 Treasurer Oversight ({from} → {to})",
     treasAssistNudge: "👑 Treasurer Assist Nudge",
     nudgeFor: "🔔 Nudge {from} for {to}",
@@ -517,6 +524,15 @@ const copy = {
     returnedToast: "Returned for revision. The bill stays.",
     editApprovedToast: "Edit approved. Balances updated.",
     editKeptToast: "Edit rejected — original bill kept.",
+    butalBadge: "Exact: {exact} • Rounded by {diff} (Butal Buffer)",
+    rosterAdded: "Added {n} friends! Skipped duplicates/invalid: {skipped}",
+    rosterAddedClean: "Added {n} friends!",
+    patakHead: "💸 Patak-patak: {amt} / head ({n} kasali)",
+    patakLibre: "💸 Patak-patak: {amt} / head ({n} paying · {free} ₱0.00)",
+    badGcash: "Use 09XX-XXX-XXXX or +639XXXXXXXXX",
+    barkadaCount: "👥 {n} sa Barkada ({joined} Joined • {left} Unclaimed)",
+    undoDelete: "↩️ Undo",
+    charsLeft: "{n} left",
   },
   tl: {
     home: "Mga lakad",
@@ -598,6 +614,12 @@ const copy = {
     memberName: "Pangalan",
     memberAddHint:
       "Heads up: kasama agad siya sa existing na Hati-hati at May excluded na gastos. I-edit ang mga iyon kung hindi siya kasama.",
+    lateComerFuture: "🆕 Future Gastos Only (Just Arrived)",
+    lateComerPast: "🔄 Include in All Past Pantay Bills",
+    memberAddHintFuture: "Hindi sasama sa lumang pantay bills. Future gastos lang ang hatian niya.",
+    rename: "Rename",
+    messengerBanner:
+      "⚠️ Nasa Messenger Browser ka! Tap [⋯] sa sulok → Open in External Browser (Safari/Chrome) para manatili ang seat sa phone mo.",
     emptyHome: "Wala pang lakad. Gawa na ng isa! 🏝️",
     emptyGastos: "Wala pang gastos. Sino ang unang nag-abono? 🧾",
     needPeople: "Magdagdag muna ng tao bago mag-add ng gastos.",
@@ -871,7 +893,7 @@ const copy = {
     heySeat: "Hey {name}! Tap below to claim your spot sa {trip}.",
     notMe: "Di ako si {name} (Pick another name)",
     taken: "Taken",
-    takenHint: "Switch devices? I-enter ang 4-digit PIN o pakiusap kay {name} na i-reset ang lock.",
+    takenHint: "Switch devices? I-enter ang 4-digit PIN o last 4 ng GCash, o pakiusap kay {name} na i-reset ang lock.",
     claimGcashHint: "GCash # mo (para madaling magbayad ang barkada)",
     claimAs: "Pasok sa Lakad as {name}!",
     payerMe: "{name} (Ako)",
@@ -909,6 +931,7 @@ const copy = {
     pinBad: "4 digits dapat ang PIN.",
     pinWrong: "Mali ang PIN. Try again, o pakiusap sa treasurer na i-Reset Lock.",
     pinAsk: "Claimed na ang seat. I-enter ang PIN kung ikaw ito.",
+    pinAskGcash: "Claimed na ang seat. I-enter ang PIN o last 4 digits ng GCash mo.",
     seatClaimed: "Ikaw na si",
     lockReset: "Na-unlock ang seat ni",
     resetLock: "Reset Lock",
@@ -987,12 +1010,12 @@ const copy = {
     copyForGc: "📋 Copy for GC",
     copyNumOf: "📋 Copy # ni {name}",
     paidAmt: "🙋‍♂️ Bayad na ako {amt}",
-    sentWaitConfirm: "⏳ Payment sent — hintay confirm ni {name}",
+    sentWaitConfirm: "⏳ {amt} sent — hintay confirm ni {name}",
     nudgedYou: "📣 Ni-nudge ka ni {name}!",
     confirmAmtFrom: "✓ Confirm {amt} from {name}",
     markPaidBehalf: "I-mark as paid (cash nila)",
     markPaidCta: "🙋‍♂️ Mark Paid",
-    confirmReceived: "✓ Confirm Received",
+    confirmReceived: "✓ Confirm {amt} Received",
     treasOversight: "👑 Treasurer Oversight ({from} → {to})",
     treasAssistNudge: "👑 Treasurer Assist Nudge",
     nudgeFor: "🔔 Nudge {from} for {to}",
@@ -1033,6 +1056,15 @@ const copy = {
     returnedToast: "Binalik for revision. Nandito pa ang bill.",
     editApprovedToast: "Na-approve ang edit. Updated na ang balances.",
     editKeptToast: "Na-reject ang edit — original bill ang naiwan.",
+    butalBadge: "Exact: {exact} • Rounded by {diff} (Butal Buffer)",
+    rosterAdded: "Added {n} friends! Skipped duplicates/invalid: {skipped}",
+    rosterAddedClean: "Added {n} friends!",
+    patakHead: "💸 Patak-patak: {amt} / head ({n} kasali)",
+    patakLibre: "💸 Patak-patak: {amt} / head ({n} paying · {free} ₱0.00)",
+    badGcash: "09XX-XXX-XXXX o +639XXXXXXXXX lang",
+    barkadaCount: "👥 {n} sa Barkada ({joined} Joined • {left} Unclaimed)",
+    undoDelete: "↩️ Undo",
+    charsLeft: "{n} left",
   },
 } as const
 
@@ -1099,4 +1131,12 @@ export function sulkMeta(lang: Lang, days: number) {
 
 export function personaLabel(lang: Lang, persona: Persona) {
   return t(lang, persona)
+}
+
+export function barkadaCountLabel(lang: Lang, members: { claimedByUid?: string | null }[]) {
+  const joined = members.filter((member) => member.claimedByUid).length
+  return t(lang, "barkadaCount")
+    .replace("{n}", String(members.length))
+    .replace("{joined}", String(joined))
+    .replace("{left}", String(members.length - joined))
 }

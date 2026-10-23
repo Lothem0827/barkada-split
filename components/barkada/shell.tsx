@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   ArrowLeftIcon,
@@ -121,6 +121,8 @@ function AppFrame() {
   const [confirm, setConfirm] = useState<Confirm>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [hatianFocus, setHatianFocus] = useState<string | null>(null)
+  const [hiddenExpenseId, setHiddenExpenseId] = useState<string | null>(null)
+  const pendingDeleteRef = useRef<{ id: string; timer: number } | null>(null)
 
   const liveInvite = !!(trip && !isSeedTripId(trip.id))
 
@@ -262,7 +264,7 @@ function AppFrame() {
                   {trip.open ? " · " + t(lang, "openModeOn") : ""}
                 </p>
                 <div className="flex items-start justify-between gap-2">
-                  <h1 className="font-heading text-xl font-bold wrap-break-word">{trip.name}</h1>
+                  <h1 className="min-w-0 truncate font-heading text-xl font-bold">{trip.name}</h1>
                   <div className="flex shrink-0 flex-wrap justify-end gap-2">
                     {liveInvite ? (
                       <Button
@@ -321,7 +323,33 @@ function AppFrame() {
                 onReject={(id, reason) => run(store.rejectExpense(id, reason))}
                 onApproveEdit={(id) => run(store.approveEdit(id))}
                 onRejectEdit={(id) => run(store.rejectEdit(id))}
-                onDelete={(id) => run(store.deleteExpense(id))}
+                hiddenExpenseId={hiddenExpenseId}
+                onDelete={(id) => {
+                  const prev = pendingDeleteRef.current
+                  if (prev) {
+                    window.clearTimeout(prev.timer)
+                    store.deleteExpense(prev.id)
+                  }
+                  setHiddenExpenseId(id)
+                  const timer = window.setTimeout(() => {
+                    store.deleteExpense(id)
+                    pendingDeleteRef.current = null
+                    setHiddenExpenseId(null)
+                  }, 5000)
+                  pendingDeleteRef.current = { id, timer }
+                  toast.add({
+                    title: t(lang, "deleted"),
+                    timeout: 5000,
+                    actionProps: {
+                      children: t(lang, "undoDelete"),
+                      onClick: () => {
+                        if (pendingDeleteRef.current?.timer) window.clearTimeout(pendingDeleteRef.current.timer)
+                        pendingDeleteRef.current = null
+                        setHiddenExpenseId(null)
+                      },
+                    },
+                  })
+                }}
                 onInvite={() => openInvite()}
               />
             ) : null}

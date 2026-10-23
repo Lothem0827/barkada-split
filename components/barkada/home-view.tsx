@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/card"
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { peso, wrappedStats } from "@/lib/calc"
-import { t } from "@/lib/i18n"
+import { barkadaCountLabel, t } from "@/lib/i18n"
 import { useBarkada } from "@/lib/store"
 import { initial, memberName } from "@/lib/types"
 
@@ -82,7 +82,7 @@ export function HomeView({
                     <span className="font-mono text-sm font-semibold tabular-nums">{peso(stats.total)}</span>
                   </CardAction>
                   <CardDescription>
-                    {trip.members.length} {t(lang, "members").toLowerCase()} · {t(lang, "treas")}:{" "}
+                    {barkadaCountLabel(lang, trip.members)} · {t(lang, "treas")}:{" "}
                     {memberName(trip, trip.treasurer)}
                     {trip.open ? " · " + t(lang, "openModeOn") : ""}
                   </CardDescription>

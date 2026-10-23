@@ -17,6 +17,7 @@ const fontMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://barkada-split-bywn.vercel.app"),
   title: "Barkada Split",
   description: "Split group trip expenses with your barkada. Records marks only — no real payments.",
   applicationName: "Barkada Split",
@@ -24,6 +25,17 @@ export const metadata: Metadata = {
     capable: true,
     title: "Barkada Split",
     statusBarStyle: "default",
+  },
+  openGraph: {
+    title: "Barkada Split",
+    description: "Walang kalimutan ng ambagan! Tap to claim your name, log gastos, and settle up via GCash.",
+    siteName: "Barkada Split",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Barkada Split",
+    description: "Walang kalimutan ng ambagan! Tap to claim your name, log gastos, and settle up via GCash.",
   },
   icons: {
     icon: [

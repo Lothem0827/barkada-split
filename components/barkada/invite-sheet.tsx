@@ -83,9 +83,11 @@ export function InviteBarkadaSheet({
             </div>
             <div className="mt-3 flex flex-wrap gap-1.5">
               {live.members.map((member) => (
-                <Badge key={member.id} variant={member.claimedByUid ? "default" : "secondary"}>
-                  {member.id === live.treasurer ? "👑 " : member.claimedByUid ? "🟢 " : "⏳ "}
-                  {member.name}
+                <Badge key={member.id} variant={member.claimedByUid ? "default" : "secondary"} className="max-w-[140px]">
+                  <span className="truncate">
+                    {member.id === live.treasurer ? "👑 " : member.claimedByUid ? "🟢 " : "⏳ "}
+                    {member.name}
+                  </span>
                 </Badge>
               ))}
             </div>

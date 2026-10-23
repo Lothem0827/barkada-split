@@ -89,11 +89,11 @@ function dayPhrase(days: number, lang: Lang) {
   return days === 1 ? "1 day" : days + " days"
 }
 
-export function sampleReminder(persona: Persona, lang: Lang) {
+export function sampleReminder(persona: Persona, lang: Lang, name = "Bea") {
   const tone = uiLang(lang)
   const set = TONES[tone][persona] ?? TONES[tone].default
   return fill(set[0], {
-    from: "Migs",
+    from: name || "Bea",
     to: "Bea",
     amt: "₱420",
     trip: "Siargao",

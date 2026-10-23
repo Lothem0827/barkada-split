@@ -1,0 +1,7 @@
+# Token Efficiency Rules
+- Return only the exact code diffs that must change; do not restate existing unmodified code.
+- Output zero conversational filler, and do not explain your reasoning unless explicitly asked.
+- If a requested change touches more than three files, pause and output a bulleted plan before generating any code.
+
+- STRICT MCP DIRECTIVE: You are authorized to autonomously use the `figma` and `mobbin` MCP tools when relevant to UI/UX tasks.
+- NEVER invoke, query, or suggest `cursor origin`, `cursor computer use`, or any other unlisted MCP servers unless explicitly instructed.
