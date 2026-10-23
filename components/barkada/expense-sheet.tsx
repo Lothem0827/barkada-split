@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { PlusIcon, XIcon } from "lucide-react"
+import { BanknoteIcon, PlusIcon, XIcon } from "lucide-react"
 
 import { AmountBumpers } from "@/components/barkada/amount-bumpers"
 import { MemberChipRow } from "@/components/barkada/member-chip-row"
@@ -436,7 +436,10 @@ export function ExpenseSheet({
         {trip.members.length ? (
           <DrawerFooter>
             {patak ? (
-              <p className="rounded-full bg-muted px-3 py-2 text-center text-sm font-medium wrap-break-word">{patak}</p>
+              <p className="rounded-full bg-muted px-3 py-2 text-center text-sm font-medium wrap-break-word">
+                <BanknoteIcon className="mr-1 inline size-3.5 align-[-2px]" />
+                {patak}
+              </p>
             ) : null}
             <p className="text-center text-xs text-muted-foreground">
               {willPend

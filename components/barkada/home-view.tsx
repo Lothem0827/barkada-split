@@ -1,7 +1,7 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { CalculatorIcon, PlusIcon, UserPlusIcon } from "lucide-react"
+import { CalculatorIcon, PalmtreeIcon, PlusIcon, UserPlusIcon, UsersIcon } from "lucide-react"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -14,7 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { peso, wrappedStats } from "@/lib/calc"
 import { barkadaCountLabel, t } from "@/lib/i18n"
 import { useBarkada } from "@/lib/store"
@@ -82,6 +82,7 @@ export function HomeView({
                     <span className="font-mono text-sm font-semibold tabular-nums">{peso(stats.total)}</span>
                   </CardAction>
                   <CardDescription>
+                    <UsersIcon className="mr-0.5 inline size-3.5 align-[-2px]" />
                     {barkadaCountLabel(lang, trip.members)} · {t(lang, "treas")}:{" "}
                     {memberName(trip, trip.treasurer)}
                     {trip.open ? " · " + t(lang, "openModeOn") : ""}
@@ -108,6 +109,9 @@ export function HomeView({
       ) : (
         <Empty className="border">
           <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <PalmtreeIcon />
+            </EmptyMedia>
             <EmptyTitle>{t(lang, "emptyHome")}</EmptyTitle>
           </EmptyHeader>
         </Empty>

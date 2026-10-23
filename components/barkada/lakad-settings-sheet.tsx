@@ -1,7 +1,20 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { XIcon } from "lucide-react"
+import {
+  CoinsIcon,
+  CrownIcon,
+  LockIcon,
+  ScrollTextIcon,
+  SettingsIcon,
+  SirenIcon,
+  TagIcon,
+  Trash2Icon,
+  TriangleAlertIcon,
+  UnlockIcon,
+  UsersIcon,
+  XIcon,
+} from "lucide-react"
 
 import { ArmButton } from "@/components/barkada/arm-button"
 import { Button } from "@/components/ui/button"
@@ -74,8 +87,9 @@ export function LakadSettingsSheet({
       <DrawerContent className="mx-auto max-w-[560px]">
         <DrawerHeader>
           <div className="flex items-start justify-between gap-2 text-left">
-            <DrawerTitle className="wrap-break-word pr-2">
-              {t(lang, "lakadSettings").replace("{name}", live.name)}
+            <DrawerTitle className="flex items-start gap-2 wrap-break-word pr-2">
+              <SettingsIcon className="mt-0.5 size-4 shrink-0" />
+              <span>{t(lang, "lakadSettings").replace("{name}", live.name)}</span>
             </DrawerTitle>
             <Button
               variant="ghost"
@@ -90,7 +104,10 @@ export function LakadSettingsSheet({
         </DrawerHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-4 py-3 pb-[max(16px,env(safe-area-inset-bottom))]">
           <section className="flex flex-col gap-3">
-            <h3 className="font-heading text-sm font-semibold">🏷️ {t(lang, "tripName")}</h3>
+            <h3 className="font-heading inline-flex items-center gap-1.5 text-sm font-semibold">
+              <TagIcon className="size-4" />
+              {t(lang, "tripName")}
+            </h3>
             <Field>
               <FieldLabel htmlFor="t-lakad-name">{t(lang, "tripName")}</FieldLabel>
               <Input
@@ -115,13 +132,19 @@ export function LakadSettingsSheet({
                 setTab("barkada")
               }}
             >
-              {t(lang, "goToRoster")}
+              <span className="inline-flex items-center gap-1">
+                <UsersIcon className="size-3.5" />
+                {t(lang, "goToRoster")}
+              </span>
             </button>
           </section>
 
           {treasurer ? (
             <section className="flex flex-col gap-3">
-              <h3 className="font-heading text-sm font-semibold">🔒 {t(lang, "approvalSection")}</h3>
+              <h3 className="font-heading inline-flex items-center gap-1.5 text-sm font-semibold">
+                <LockIcon className="size-4" />
+                {t(lang, "approvalSection")}
+              </h3>
               <ToggleGroup
                 variant="outline"
                 spacing={1}
@@ -137,10 +160,12 @@ export function LakadSettingsSheet({
                 }}
               >
                 <ToggleGroupItem value="open" className="min-h-[44px] w-full justify-start px-3.5 text-left">
-                  🔓 {t(lang, "openModePill")}
+                  <UnlockIcon data-icon="inline-start" />
+                  {t(lang, "openModePill")}
                 </ToggleGroupItem>
                 <ToggleGroupItem value="locked" className="min-h-[44px] w-full justify-start px-3.5 text-left">
-                  🔒 {t(lang, "treasApprovalMode")}
+                  <LockIcon data-icon="inline-start" />
+                  {t(lang, "treasApprovalMode")}
                 </ToggleGroupItem>
               </ToggleGroup>
             </section>
@@ -148,7 +173,10 @@ export function LakadSettingsSheet({
 
           {treasurer ? (
             <section className="flex flex-col gap-3">
-              <h3 className="font-heading text-sm font-semibold">🪙 {t(lang, "barya")}</h3>
+              <h3 className="font-heading inline-flex items-center gap-1.5 text-sm font-semibold">
+                <CoinsIcon className="size-4" />
+                {t(lang, "barya")}
+              </h3>
               <ToggleGroup
                 variant="outline"
                 spacing={1}
@@ -177,10 +205,16 @@ export function LakadSettingsSheet({
           ) : null}
 
           <section className="flex flex-col gap-3">
-            <h3 className="font-heading text-sm font-semibold">👑 {t(lang, "dangerSection")}</h3>
+            <h3 className="font-heading inline-flex items-center gap-1.5 text-sm font-semibold">
+              <CrownIcon className="size-4" />
+              {t(lang, "dangerSection")}
+            </h3>
             {treasurer && others.length ? (
               <Field>
-                <FieldLabel>👑 {t(lang, "handoff")}</FieldLabel>
+                <FieldLabel className="inline-flex items-center gap-1.5">
+                  <CrownIcon className="size-3.5" />
+                  {t(lang, "handoff")}
+                </FieldLabel>
                 <div className="flex flex-wrap gap-2">
                   {others.map((member) => (
                     <Button
@@ -192,7 +226,8 @@ export function LakadSettingsSheet({
                         setPendingHandoffId((current) => (current === member.id ? "" : member.id))
                       }
                     >
-                      👑 {member.name}
+                      <CrownIcon data-icon="inline-start" />
+                      {member.name}
                     </Button>
                   ))}
                 </div>
@@ -208,6 +243,7 @@ export function LakadSettingsSheet({
                           notify(result.message)
                         }}
                       >
+                        <CrownIcon data-icon="inline-start" />
                         {t(lang, "crownPassConfirm").replace("{name}", pending.name)}
                       </Button>
                       <Button
@@ -236,7 +272,10 @@ export function LakadSettingsSheet({
                     }
                   }}
                 >
-                  {t(lang, "emergencyTakeoverBtn")}
+                  <span className="inline-flex items-center gap-1">
+                    <TriangleAlertIcon className="size-3.5" />
+                    {t(lang, "emergencyTakeoverBtn")}
+                  </span>
                 </button>
                 {takeoverOpen ? (
                   <div className="flex flex-col gap-3 rounded-xl border border-destructive/30 bg-card p-3">
@@ -284,7 +323,12 @@ export function LakadSettingsSheet({
                     <ArmButton
                       variant="destructive"
                       className="btn-danger min-h-[48px] w-full"
-                      label={t(lang, "emergencyTakeoverConfirm")}
+                      label={
+                        <>
+                          <SirenIcon className="size-4" />
+                          {t(lang, "emergencyTakeoverConfirm")}
+                        </>
+                      }
                       armedLabel={t(lang, "sure")}
                       cancelLabel={t(lang, "cancel")}
                       onConfirm={() => {
@@ -308,7 +352,12 @@ export function LakadSettingsSheet({
               <ArmButton
                 variant="destructive"
                 className="w-full"
-                label={"🗑️ " + t(lang, "delTrip")}
+                label={
+                  <>
+                    <Trash2Icon className="size-4" />
+                    {t(lang, "delTrip")}
+                  </>
+                }
                 armedLabel={t(lang, "sureDelForever")}
                 cancelLabel={t(lang, "cancel")}
                 onConfirm={onDeleteTrip}
@@ -319,7 +368,10 @@ export function LakadSettingsSheet({
           {emergencyLog.length ? (
             <details className="rounded-xl border bg-card p-3">
               <summary className="cursor-pointer font-heading text-sm font-semibold">
-                {t(lang, "emergencyHistory")}
+                <span className="inline-flex items-center gap-1.5">
+                  <ScrollTextIcon className="size-4" />
+                  {t(lang, "emergencyHistory")}
+                </span>
               </summary>
               <ul className="mt-3 flex flex-col gap-3">
                 {[...emergencyLog]

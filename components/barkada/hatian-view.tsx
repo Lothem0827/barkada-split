@@ -1,6 +1,22 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import {
+  BanknoteIcon,
+  BellIcon,
+  CheckIcon,
+  ClockIcon,
+  CopyIcon,
+  CrownIcon,
+  HandIcon,
+  InboxIcon,
+  MegaphoneIcon,
+  PartyPopperIcon,
+  PlusIcon,
+  SendIcon,
+  TriangleAlertIcon,
+  UsersIcon,
+} from "lucide-react"
 
 import { CopyAction } from "@/components/barkada/copy-action"
 import { HatianActionSheet } from "@/components/barkada/hatian-action-sheet"
@@ -9,7 +25,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Input } from "@/components/ui/input"
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
@@ -139,9 +155,11 @@ export function HatianView({
         }}
       >
         <ToggleGroupItem value="mine" className="min-h-[40px] flex-1 px-3.5">
+          <HandIcon data-icon="inline-start" />
           {t(lang, "myHatian").replace("{n}", String(mine.length))}
         </ToggleGroupItem>
         <ToggleGroupItem value="all" className="min-h-[40px] flex-1 px-3.5">
+          <UsersIcon data-icon="inline-start" />
           {t(lang, "allHatian").replace("{n}", String(list.length))}
         </ToggleGroupItem>
       </ToggleGroup>
@@ -228,7 +246,14 @@ export function HatianView({
                     ) : null}
                   </div>
                   <Badge variant="secondary">
-                    {pending ? t(lang, "sentShort") : sulk.emoji + " " + sulk.name}
+                    {pending ? (
+                      <>
+                        <ClockIcon className="size-3.5" />
+                        {t(lang, "sentShort")}
+                      </>
+                    ) : (
+                      sulk.emoji + " " + sulk.name
+                    )}
                   </Badge>
                 </div>
               </div>
@@ -267,14 +292,17 @@ export function HatianView({
                 </CardAction>
                 {role === "debtor" ? (
                   <Badge className="w-fit border-transparent bg-l3/15 text-l3">
+                    <SendIcon className="size-3.5" />
                     {t(lang, "youPay").replace("{name}", toName)}
                   </Badge>
                 ) : role === "creditor" ? (
                   <Badge className="w-fit border-transparent bg-l0/15 text-l0">
+                    <InboxIcon className="size-3.5" />
                     {t(lang, "youCollect").replace("{name}", fromName)}
                   </Badge>
                 ) : (
                   <Badge variant="secondary" className="w-fit">
+                    <CrownIcon className="size-3.5" />
                     {t(lang, "treasOversight").replace("{from}", fromName).replace("{to}", toName)}
                   </Badge>
                 )}
@@ -291,6 +319,7 @@ export function HatianView({
                 {role === "debtor" && incoming ? (
                   <Alert>
                     <AlertDescription>
+                      <MegaphoneIcon className="mr-1 inline size-3.5 align-[-2px]" />
                       {t(lang, "nudgedYou").replace("{name}", memberName(trip, incoming.from))}
                     </AlertDescription>
                   </Alert>
@@ -303,6 +332,7 @@ export function HatianView({
                     </p>
                     {!number && role === "debtor" ? (
                       <p className="text-sm font-medium text-destructive">
+                        <TriangleAlertIcon className="mr-1 inline size-3.5 align-[-2px]" />
                         {t(lang, "creditorNoGcash").replace("{name}", toName)}
                       </p>
                     ) : null}
@@ -315,6 +345,7 @@ export function HatianView({
                         copiedLabel={t(lang, "copyDone")}
                         onCopy={() => onCopy(digits(number), t(lang, "numCopied"))}
                       >
+                        <CopyIcon data-icon="inline-start" />
                         {t(lang, "copyNumOf").replace("{name}", toName)}
                       </CopyAction>
                       <CopyAction
@@ -324,7 +355,8 @@ export function HatianView({
                         copiedLabel={t(lang, "copyDone")}
                         onCopy={() => onCopy(plain(row.pay), plain(row.pay) + " " + t(lang, "copied"))}
                       >
-                        {"💸 " + t(lang, "copyAmt")}
+                        <BanknoteIcon data-icon="inline-start" />
+                        {t(lang, "copyAmt")}
                       </CopyAction>
                     </div>
                   </>
@@ -368,12 +400,14 @@ export function HatianView({
                         setGcashDraft(profile.gcash)
                       }}
                     >
+                      <PlusIcon data-icon="inline-start" />
                       {t(lang, "addMyGcash")}
                     </Button>
                   )
                 ) : null}
                 {role === "debtor" && pending ? (
                   <Badge variant="secondary" className="w-fit whitespace-normal">
+                    <ClockIcon className="size-3.5 shrink-0" />
                     {t(lang, "sentWaitConfirm")
                       .replace("{amt}", peso(pending.amount))
                       .replace("{name}", toName)}
@@ -390,6 +424,7 @@ export function HatianView({
                     disabled={payBusy}
                     onClick={() => runPay(() => confirmPayment(pending.id))}
                   >
+                    <CheckIcon data-icon="inline-start" />
                     {t(lang, "confirmReceived").replace("{amt}", peso(pending.amount))}
                   </Button>
                 ) : null}
@@ -400,6 +435,7 @@ export function HatianView({
                     disabled={payBusy}
                     onClick={() => runPay(() => markPaid(row.from, row.to, row.amount))}
                   >
+                    <HandIcon data-icon="inline-start" />
                     {t(lang, "paidAmt").replace("{amt}", peso(row.pay))}
                   </Button>
                 ) : null}
@@ -428,6 +464,7 @@ export function HatianView({
                     disabled={payBusy}
                     onClick={() => runPay(() => markPaid(row.from, row.to, row.amount))}
                   >
+                    <HandIcon data-icon="inline-start" />
                     {t(lang, "markPaidCta")}
                   </Button>
                 ) : null}
@@ -449,6 +486,11 @@ export function HatianView({
       ) : (
         <Empty className="border">
           <EmptyHeader>
+            {!(list.length && hatianScope === "mine") ? (
+              <EmptyMedia variant="icon">
+                <PartyPopperIcon />
+              </EmptyMedia>
+            ) : null}
             <EmptyTitle>
               {list.length && hatianScope === "mine" ? t(lang, "noMyDebts") : t(lang, "noDebts")}
             </EmptyTitle>
@@ -580,12 +622,20 @@ function NudgeComposer({
     <div className="flex flex-col gap-2 border-t border-dashed pt-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs font-bold">
-          {fromTreasurer
-            ? t(lang, "treasAssistNudge")
-            : t(lang, "tonePill").replace("{persona}", t(lang, PERSONA_COPY[tone]))}
+          {fromTreasurer ? (
+            <span className="inline-flex items-center gap-1">
+              <CrownIcon className="size-3.5" />
+              {t(lang, "treasAssistNudge")}
+            </span>
+          ) : (
+            t(lang, "tonePill").replace("{persona}", t(lang, PERSONA_COPY[tone]))
+          )}
         </p>
         {nudgeLocked ? (
-          <Badge variant="secondary">{t(lang, "nudgedPending")}</Badge>
+          <Badge variant="secondary">
+            <BellIcon className="size-3.5" />
+            {t(lang, "nudgedPending")}
+          </Badge>
         ) : seenCount > 0 ? (
           <Badge variant="secondary">{t(lang, "seenZoner").replace("{n}", String(seenCount))}</Badge>
         ) : null}
@@ -613,6 +663,7 @@ function NudgeComposer({
           disabled={nudgeLocked}
           onClick={onNudge}
         >
+          <BellIcon data-icon="inline-start" />
           {nudgeLocked
             ? t(lang, "nudgedPending")
             : fromTreasurer
@@ -625,6 +676,7 @@ function NudgeComposer({
           copiedLabel={t(lang, "copyDone")}
           onCopy={onCopy}
         >
+          <CopyIcon data-icon="inline-start" />
           {t(lang, "copyForGc")}
         </CopyAction>
       </div>

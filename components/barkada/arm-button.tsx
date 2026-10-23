@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "cn"
@@ -13,7 +13,7 @@ export function ArmButton({
   className,
   variant = "destructive",
 }: {
-  label: string
+  label: ReactNode
   armedLabel: string
   cancelLabel: string
   onConfirm: () => void

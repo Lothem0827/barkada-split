@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useImperativeHandle, useRef, useState } from "react"
-import { XIcon } from "lucide-react"
+import { LightbulbIcon, XIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -233,7 +233,10 @@ export function BarkadaMemberInput({
           {t(lang, "obAddChip")}
         </Button>
       </div>
-      <FieldDescription id={`${inputId}-tip`}>{t(lang, "rosterTip")}</FieldDescription>
+      <FieldDescription id={`${inputId}-tip`} className="inline-flex items-start gap-1.5">
+        <LightbulbIcon className="mt-0.5 size-3.5 shrink-0" />
+        <span>{t(lang, "rosterTip")}</span>
+      </FieldDescription>
       <p className="sr-only" aria-live="polite">
         {flashMessage}
       </p>

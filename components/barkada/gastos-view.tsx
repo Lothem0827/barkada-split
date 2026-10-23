@@ -1,6 +1,17 @@
 "use client"
 
 import { useState } from "react"
+import {
+  CheckIcon,
+  ClockIcon,
+  PencilIcon,
+  ReceiptIcon,
+  Share2Icon,
+  SparklesIcon,
+  Trash2Icon,
+  TriangleAlertIcon,
+  Undo2Icon,
+} from "lucide-react"
 
 import { ArmButton } from "@/components/barkada/arm-button"
 import { Badge } from "@/components/ui/badge"
@@ -13,7 +24,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { balances, fmtDate, namesList, peso, sharesOf, totalOf, wrappedStats } from "@/lib/calc"
 import { t, type CopyKey } from "@/lib/i18n"
 import { isSeedTripId } from "@/lib/merge-trip"
@@ -134,7 +145,8 @@ function ExpenseCard({
         {pending ? (
           mine ? (
             <Badge variant="secondary">
-              ⏳ {t(lang, "waitingTreas").replace("{name}", memberName(trip, trip.treasurer))}
+              <ClockIcon className="size-3.5" />
+              {t(lang, "waitingTreas").replace("{name}", memberName(trip, trip.treasurer))}
             </Badge>
           ) : (
             <Badge variant="secondary">
@@ -144,6 +156,7 @@ function ExpenseCard({
         ) : null}
         {rejected ? (
           <Badge variant="secondary" className="h-auto whitespace-normal">
+            <TriangleAlertIcon className="size-3.5 shrink-0" />
             {t(lang, "returnedBy")
               .replace("{name}", memberName(trip, trip.treasurer))
               .replace("{reason}", reasonText(lang, expense.rejectionReason))}
@@ -152,6 +165,7 @@ function ExpenseCard({
         {expense.pendingEdit ? (
           <div className="flex flex-col gap-2 rounded-xl border border-amber-500/70 bg-amber-500/10 p-3">
             <Badge variant="secondary" className="h-auto whitespace-normal">
+              <PencilIcon className="size-3.5 shrink-0" />
               {proposalActions
                 ? t(lang, "editProposed").replace("{name}", memberName(trip, expense.pendingEdit.editedBy))
                 : t(lang, "editWaiting").replace("{name}", memberName(trip, trip.treasurer))}
@@ -211,9 +225,11 @@ function ExpenseCard({
         {proposalActions && onApproveEdit && onRejectEdit ? (
           <div className="grid grid-cols-2 gap-2">
             <Button className={thumbClass} onClick={onApproveEdit}>
+              <CheckIcon data-icon="inline-start" />
               {t(lang, "approveEdit")}
             </Button>
             <Button variant="outline" className={thumbClass} onClick={onRejectEdit}>
+              <Undo2Icon data-icon="inline-start" />
               {t(lang, "rejectEdit")}
             </Button>
           </div>
@@ -241,6 +257,7 @@ function ExpenseCard({
                 {t(lang, "approve")}
               </Button>
               <Button variant="outline" className={thumbClass} onClick={() => setReturning(true)}>
+                <Undo2Icon data-icon="inline-start" />
                 {t(lang, "returnReject")}
               </Button>
             </div>
@@ -250,6 +267,7 @@ function ExpenseCard({
           <div className="grid grid-cols-2 gap-2">
             {onEdit ? (
               <Button className={thumbClass} onClick={onEdit}>
+                <PencilIcon data-icon="inline-start" />
                 {t(lang, "fixResubmit")}
               </Button>
             ) : null}
@@ -257,7 +275,12 @@ function ExpenseCard({
               <ArmButton
                 variant="ghost"
                 className="w-full whitespace-normal"
-                label={t(lang, "deleteBill")}
+                label={
+                  <>
+                    <Trash2Icon className="size-4" />
+                    {t(lang, "deleteBill")}
+                  </>
+                }
                 armedLabel={t(lang, "sureDeleteBill")}
                 cancelLabel={t(lang, "cancel")}
                 onConfirm={onDelete}
@@ -344,7 +367,15 @@ export function GastosView({
           <CardDescription>{t(lang, "totalGastos")}</CardDescription>
           <CardTitle className="font-mono text-3xl font-extrabold tabular-nums">{peso(stats.total)}</CardTitle>
           <CardDescription>
-            {memberName(trip, as)}, {line}
+            {memberName(trip, as)},{" "}
+            {net === 0 ? (
+              <span className="inline-flex items-center gap-1">
+                <SparklesIcon className="size-3.5" />
+                {line}
+              </span>
+            ) : (
+              line
+            )}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -353,10 +384,12 @@ export function GastosView({
         <Card>
           <CardContent className="flex items-center gap-3 py-3">
             <p className="min-w-0 flex-1 text-sm font-medium">
-              ⏳ {t(lang, "inviteLeft").replace("{n}", String(waiting.length))}
+              <ClockIcon className="mr-1 inline size-3.5 align-[-2px]" />
+              {t(lang, "inviteLeft").replace("{n}", String(waiting.length))}
             </p>
             <Button size="touch" className="min-h-[38px] shrink-0" onClick={onInvite}>
-              📲 {t(lang, "invitePill").replace("{code}", trip.joinCode)}
+              <Share2Icon data-icon="inline-start" />
+              {t(lang, "invitePill").replace("{code}", trip.joinCode)}
             </Button>
           </CardContent>
         </Card>
@@ -443,6 +476,9 @@ export function GastosView({
       ) : (
         <Empty className="border">
           <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <ReceiptIcon />
+            </EmptyMedia>
             <EmptyTitle>{t(lang, "emptyGastos")}</EmptyTitle>
           </EmptyHeader>
         </Empty>

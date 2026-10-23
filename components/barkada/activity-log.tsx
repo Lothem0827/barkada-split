@@ -1,6 +1,25 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, type ComponentType } from "react"
+import {
+  BanknoteIcon,
+  CircleCheckIcon,
+  CopyIcon,
+  CrownIcon,
+  EyeIcon,
+  HandIcon,
+  HashIcon,
+  LockIcon,
+  PencilIcon,
+  PlusIcon,
+  ReceiptIcon,
+  SirenIcon,
+  SparklesIcon,
+  Trash2Icon,
+  Undo2Icon,
+  UnlockIcon,
+  type LucideProps,
+} from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -14,17 +33,44 @@ import { type ActivityCategory, type ActivityLogItem, type Lang, type Trip } fro
 const PAGE = 8
 const PILL =
   "min-h-[36px] shrink-0 rounded-full px-3 text-xs font-bold transition active:scale-95"
+
+type LucideIcon = ComponentType<LucideProps>
+
+const ACTIVITY_ICONS: Record<string, LucideIcon> = {
+  "🧾": ReceiptIcon,
+  "✓": CircleCheckIcon,
+  "✅": CircleCheckIcon,
+  "↩️": Undo2Icon,
+  "✏️": PencilIcon,
+  "🗑️": Trash2Icon,
+  "🙋‍♂️": HandIcon,
+  "👀": EyeIcon,
+  "➕": PlusIcon,
+  "👋": HandIcon,
+  "🔓": UnlockIcon,
+  "🔒": LockIcon,
+  "🔢": HashIcon,
+  "👑": CrownIcon,
+  "🚨": SirenIcon,
+}
+
 const FILTERS: {
   id: "all" | ActivityCategory
   label: "activityAll" | "activityGastos" | "activityBayad" | "activityAdmin"
   empty: "activityEmpty" | "activityEmptyGastos" | "activityEmptyBayad" | "activityEmptyAdmin"
-  icon: string
+  icon: LucideIcon
 }[] = [
-  { id: "all", label: "activityAll", empty: "activityEmpty", icon: "✨" },
-  { id: "gastos", label: "activityGastos", empty: "activityEmptyGastos", icon: "🧾" },
-  { id: "bayad", label: "activityBayad", empty: "activityEmptyBayad", icon: "💸" },
-  { id: "admin", label: "activityAdmin", empty: "activityEmptyAdmin", icon: "👑" },
+  { id: "all", label: "activityAll", empty: "activityEmpty", icon: SparklesIcon },
+  { id: "gastos", label: "activityGastos", empty: "activityEmptyGastos", icon: ReceiptIcon },
+  { id: "bayad", label: "activityBayad", empty: "activityEmptyBayad", icon: BanknoteIcon },
+  { id: "admin", label: "activityAdmin", empty: "activityEmptyAdmin", icon: CrownIcon },
 ]
+
+function ActivityIcon({ icon }: { icon: string }) {
+  const Icon = ACTIVITY_ICONS[icon] ?? ACTIVITY_ICONS[icon.replace(/\uFE0F/g, "")]
+  if (!Icon) return icon
+  return <Icon className="size-4" />
+}
 
 function ActivityMessage({ item }: { item: ActivityLogItem }) {
   const name = item.actorName
@@ -65,6 +111,7 @@ export function ActivityLogCard({
   const active = FILTERS.find((pill) => pill.id === filter) ?? FILTERS[0]
   const filtered = filter === "all" ? items : items.filter((item) => item.category === filter)
   const shown = expanded ? filtered : filtered.slice(0, PAGE)
+  const EmptyIcon = active.empty === "activityEmptyBayad" ? EyeIcon : active.icon
 
   return (
     <Card size="sm">
@@ -82,11 +129,15 @@ export function ActivityLogCard({
             }
           }}
         >
-          {FILTERS.map((pill) => (
-            <ToggleGroupItem key={pill.id} value={pill.id} className={PILL}>
-              {pill.icon} {t(lang, pill.label)} ({counts[pill.id]})
-            </ToggleGroupItem>
-          ))}
+          {FILTERS.map((pill) => {
+            const Icon = pill.icon
+            return (
+              <ToggleGroupItem key={pill.id} value={pill.id} className={PILL}>
+                <Icon data-icon="inline-start" />
+                {t(lang, pill.label)} ({counts[pill.id]})
+              </ToggleGroupItem>
+            )
+          })}
         </ToggleGroup>
       </CardHeader>
       <CardContent>
@@ -96,7 +147,7 @@ export function ActivityLogCard({
             {shown.map((item) => (
               <li key={item.id} className="relative flex gap-3">
                 <span className="relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-sm ring-2 ring-card">
-                  {item.icon}
+                  <ActivityIcon icon={item.icon} />
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-2">
@@ -110,6 +161,7 @@ export function ActivityLogCard({
                         className="min-h-[36px] shrink-0 px-2 text-xs"
                         onClick={() => void onCopy(activityResiboText(item, trip, now), t(lang, "resiboCopied"))}
                       >
+                        <CopyIcon data-icon="inline-start" />
                         {t(lang, "copyResibo")}
                       </Button>
                     ) : (
@@ -133,7 +185,10 @@ export function ActivityLogCard({
             ))}
           </ol>
         ) : (
-          <p className="text-sm text-muted-foreground">{t(lang, active.empty)}</p>
+          <p className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+            <EmptyIcon className="size-3.5 shrink-0" />
+            {t(lang, active.empty)}
+          </p>
         )}
         {filtered.length > PAGE ? (
           <Button

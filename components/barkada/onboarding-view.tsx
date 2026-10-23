@@ -5,11 +5,15 @@ import { useRouter } from "next/navigation"
 import { useTheme } from "next-themes"
 import {
   ArrowLeftIcon,
+  BeerIcon,
   CrownIcon,
   LanguagesIcon,
   MoonIcon,
+  MountainIcon,
+  PalmtreeIcon,
   SmartphoneIcon,
   SunIcon,
+  UtensilsCrossedIcon,
 } from "lucide-react"
 
 import {
@@ -37,11 +41,11 @@ const HOOKS: { title: CopyKey; body: CopyKey }[] = [
   { title: "obHook3Title", body: "obHook3Body" },
 ]
 
-const PRESETS: { emoji: string; key: CopyKey }[] = [
-  { emoji: "🏖️", key: "obPresetBeach" },
-  { emoji: "⛰️", key: "obPresetHike" },
-  { emoji: "🍻", key: "obPresetBgc" },
-  { emoji: "🥟", key: "obPresetFood" },
+const PRESETS: { icon: typeof PalmtreeIcon; key: CopyKey }[] = [
+  { icon: PalmtreeIcon, key: "obPresetBeach" },
+  { icon: MountainIcon, key: "obPresetHike" },
+  { icon: BeerIcon, key: "obPresetBgc" },
+  { icon: UtensilsCrossedIcon, key: "obPresetFood" },
 ]
 
 function emptyDraft(): OnboardDraft {
@@ -293,17 +297,21 @@ export function OnboardingView() {
                   />
                   <div className="flex flex-wrap gap-2">
                     <span className="sr-only">{t(lang, "obPresets")}</span>
-                    {PRESETS.map((preset) => (
-                      <Button
-                        key={preset.key}
-                        type="button"
-                        variant="outline"
-                        className="h-11"
-                        onClick={() => setTripName(t(lang, preset.key))}
-                      >
-                        {preset.emoji} {t(lang, preset.key)}
-                      </Button>
-                    ))}
+                    {PRESETS.map((preset) => {
+                      const Icon = preset.icon
+                      return (
+                        <Button
+                          key={preset.key}
+                          type="button"
+                          variant="outline"
+                          className="h-11"
+                          onClick={() => setTripName(t(lang, preset.key))}
+                        >
+                          <Icon data-icon="inline-start" />
+                          {t(lang, preset.key)}
+                        </Button>
+                      )
+                    })}
                   </div>
                 </Field>
                 <Field>

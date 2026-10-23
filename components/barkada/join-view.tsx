@@ -2,7 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeftIcon, CheckIcon, CrownIcon, LockIcon, PlusIcon, UserRoundIcon } from "lucide-react"
+import {
+  ArrowLeftIcon,
+  CheckIcon,
+  CrownIcon,
+  LockIcon,
+  PlusIcon,
+  TriangleAlertIcon,
+  UserRoundIcon,
+} from "lucide-react"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -179,6 +187,7 @@ export function JoinView({ code, seat }: { code: string; seat?: string }) {
       <main className={`flex flex-1 flex-col gap-5 overflow-y-auto px-4 py-5 ${selected ? "pb-40" : ""}`}>
         {inAppBrowser ? (
           <Alert className="border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-50">
+            <TriangleAlertIcon />
             <AlertDescription>{t(lang, "messengerBanner")}</AlertDescription>
           </Alert>
         ) : null}

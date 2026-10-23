@@ -1,5 +1,7 @@
 "use client"
 
+import { BanknoteIcon, EyeOffIcon, MegaphoneIcon } from "lucide-react"
+
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { daysOwed, fmtAgoFine, lvl, transfers } from "@/lib/calc"
@@ -34,8 +36,9 @@ export function IncomingNudge({
       <Card className={`border-l-4 ${ACCENT[level] ?? ACCENT[0]}`}>
         <CardContent className="flex flex-col gap-3">
           <div>
-            <p className="font-heading text-base font-bold wrap-break-word">
-              {t(lang, "incomingNudgeTitle").replace("{name}", memberName(trip, as))}
+            <p className="font-heading inline-flex items-start gap-1.5 text-base font-bold wrap-break-word">
+              <MegaphoneIcon className="mt-0.5 size-4 shrink-0" />
+              <span>{t(lang, "incomingNudgeTitle").replace("{name}", memberName(trip, as))}</span>
             </p>
             <p className="text-xs text-muted-foreground">
               {t(lang, "incomingNudgeFrom")
@@ -55,6 +58,7 @@ export function IncomingNudge({
                 onPay(hatianKeyForNudge(trip, nudge, transfers(trip)))
               }}
             >
+              <BanknoteIcon data-icon="inline-start" />
               {t(lang, "payNow")}
             </Button>
             <Button
@@ -66,6 +70,7 @@ export function IncomingNudge({
                 onDismiss()
               }}
             >
+              <EyeOffIcon data-icon="inline-start" />
               {t(lang, "seenZone")}
             </Button>
           </div>

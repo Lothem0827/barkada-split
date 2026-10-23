@@ -3,7 +3,14 @@
 import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useTheme } from "next-themes"
-import { XIcon } from "lucide-react"
+import {
+  LanguagesIcon,
+  MoonIcon,
+  RefreshCwIcon,
+  SmartphoneIcon,
+  SunIcon,
+  XIcon,
+} from "lucide-react"
 
 import { ArmButton } from "@/components/barkada/arm-button"
 import { Badge } from "@/components/ui/badge"
@@ -319,9 +326,15 @@ export function ProfileSheet({ open, onOpenChange }: { open: boolean; onOpenChan
               <CardTitle className="flex min-w-0 flex-col items-start gap-1.5">
                 {t(lang, "accountSection")}
                 {linked ? (
-                  <Badge variant="secondary">🟢 {t(lang, "syncedGoogle")}</Badge>
+                  <Badge variant="secondary">
+                    <span className="size-2 rounded-full bg-emerald-500" />
+                    {t(lang, "syncedGoogle")}
+                  </Badge>
                 ) : (
-                  <Badge variant="outline">🟡 {t(lang, "guestBadge")}</Badge>
+                  <Badge variant="outline">
+                    <span className="size-2 rounded-full bg-amber-400" />
+                    {t(lang, "guestBadge")}
+                  </Badge>
                 )}
               </CardTitle>
               <CardDescription>
@@ -364,7 +377,10 @@ export function ProfileSheet({ open, onOpenChange }: { open: boolean; onOpenChan
           <section className="flex flex-col gap-4">
             <h3 className="font-heading text-sm font-semibold">{t(lang, "prefsSection")}</h3>
             <Field>
-              <FieldLabel>{t(lang, "langUi")}</FieldLabel>
+              <FieldLabel className="inline-flex items-center gap-1.5">
+                <LanguagesIcon className="size-3.5" />
+                {t(lang, "langUi")}
+              </FieldLabel>
               <div className="no-scrollbar -mx-4 min-w-0 overflow-x-auto overscroll-x-contain snap-x px-4">
                 <ToggleGroup
                   variant="outline"
@@ -396,11 +412,15 @@ export function ProfileSheet({ open, onOpenChange }: { open: boolean; onOpenChan
                   if (picked) setTheme(picked)
                 }}
               >
-                {(Object.keys(THEME_COPY) as ThemeChoice[]).map((item) => (
-                  <ToggleGroupItem key={item} value={item} className="min-h-[40px] flex-1 px-3">
-                    {t(lang, THEME_COPY[item])}
-                  </ToggleGroupItem>
-                ))}
+                {(Object.keys(THEME_COPY) as ThemeChoice[]).map((item) => {
+                  const Icon = item === "light" ? SunIcon : item === "dark" ? MoonIcon : SmartphoneIcon
+                  return (
+                    <ToggleGroupItem key={item} value={item} className="min-h-[40px] flex-1 px-3">
+                      <Icon data-icon="inline-start" />
+                      {t(lang, THEME_COPY[item])}
+                    </ToggleGroupItem>
+                  )
+                })}
               </ToggleGroup>
             </Field>
             <Field>
@@ -439,7 +459,12 @@ export function ProfileSheet({ open, onOpenChange }: { open: boolean; onOpenChan
             {showTestTools ? <ViewAsBar /> : null}
             <ArmButton
               className="min-h-[42px] w-full"
-              label={t(lang, "replayReset")}
+              label={
+                <>
+                  <RefreshCwIcon className="size-4" />
+                  {t(lang, "replayReset")}
+                </>
+              }
               armedLabel={t(lang, "replaySureReset")}
               cancelLabel={t(lang, "cancel")}
               onConfirm={() => {

@@ -3,6 +3,8 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 
+import { CompassIcon, HouseIcon } from "lucide-react"
+
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { parseJoinCodeFromInput } from "@/lib/join-code"
@@ -26,7 +28,8 @@ export default function NotFound() {
       <div className="mx-auto flex min-h-dvh w-full max-w-[560px] flex-col justify-center gap-6 bg-background px-6">
         <div className="flex flex-col gap-2">
           <p className="font-heading text-3xl font-extrabold tracking-tight wrap-break-word">
-            🧭 Naligaw ka ata, bes! (404 — Drawing pa ang Lakad na &apos;to)
+            <CompassIcon className="mb-1 inline size-7 align-[-4px]" /> Naligaw ka ata, bes! (404 — Drawing
+            pa ang Lakad na &apos;to)
           </p>
           <p className="text-sm text-muted-foreground">Enter a join code or balik sa home.</p>
         </div>
@@ -49,7 +52,8 @@ export default function NotFound() {
             Join lakad
           </Button>
           <Button size="cta" variant="outline" onClick={() => router.push("/")}>
-            🏠 Balik sa Home
+            <HouseIcon data-icon="inline-start" />
+            Balik sa Home
           </Button>
         </div>
       </div>

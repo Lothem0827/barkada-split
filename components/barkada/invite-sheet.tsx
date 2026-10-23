@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { CopyIcon, Share2Icon } from "lucide-react"
+import { CameraIcon, ClockIcon, CopyIcon, SearchIcon, Share2Icon, TargetIcon, UsersIcon } from "lucide-react"
 import { encode } from "uqr"
 
 import { Badge } from "@/components/ui/badge"
@@ -144,6 +144,7 @@ export function InviteBarkadaSheet({
         aria-pressed={isQrZoomed}
         onClick={() => setIsQrZoomed((on) => !on)}
       >
+        <SearchIcon data-icon="inline-start" />
         {t(lang, "enlargeQr")}
       </Button>
     </div>
@@ -162,10 +163,14 @@ export function InviteBarkadaSheet({
               <div className="flex flex-col items-center gap-3">
                 {qrBlock}
                 <p className="text-center text-sm font-semibold text-foreground">
+                  <CameraIcon className="mr-1 inline size-3.5 align-[-2px]" />
                   {t(lang, "qrPoint").replace("{name}", live.name)}
                 </p>
                 {target ? (
-                  <p className="text-center text-sm font-medium">{t(lang, "qrScanAs").replace("{name}", target.name)}</p>
+                  <p className="inline-flex items-center justify-center gap-1 text-center text-sm font-medium">
+                    <TargetIcon className="size-3.5" />
+                    {t(lang, "qrScanAs").replace("{name}", target.name)}
+                  </p>
                 ) : null}
                 <p className="text-[11px] font-bold tracking-[0.18em] text-muted-foreground">{t(lang, "roomCode")}</p>
                 <p className="font-mono text-3xl font-extrabold tracking-[0.18em]">{live.joinCode}</p>
@@ -185,15 +190,20 @@ export function InviteBarkadaSheet({
                     <CopyIcon data-icon="inline-start" />
                     {codeCopied ? t(lang, "copyDone") : t(lang, "copyJoinCode")}
                   </Button>
-                  <p className="mt-3 text-sm font-semibold">
+                  <p className="mt-3 inline-flex items-center gap-1 text-sm font-semibold">
+                    <UsersIcon className="size-3.5" />
                     {t(lang, "joinedOf").replace("{joined}", String(joined)).replace("{total}", String(live.members.length))}
                   </p>
                   <div className="mt-1 flex flex-wrap gap-1" aria-hidden>
-                    {live.members.map((member) => (
-                      <span key={member.id} title={member.name}>
-                        {member.claimedByUid ? "🟢" : "⏳"}
-                      </span>
-                    ))}
+                    {live.members.map((member) =>
+                      member.claimedByUid ? (
+                        <span key={member.id} title={member.name} className="size-2 rounded-full bg-emerald-500" />
+                      ) : (
+                        <span key={member.id} title={member.name}>
+                          <ClockIcon className="size-3 text-muted-foreground" />
+                        </span>
+                      )
+                    )}
                   </div>
                 </div>
               </div>
@@ -207,7 +217,10 @@ export function InviteBarkadaSheet({
 
           {waiting.length > 0 ? (
             <div className="flex flex-col gap-2">
-              <p className="text-sm font-semibold">{t(lang, "inviteWho")}</p>
+              <p className="inline-flex items-center gap-1.5 text-sm font-semibold">
+                <TargetIcon className="size-3.5" />
+                {t(lang, "inviteWho")}
+              </p>
               <div className="no-scrollbar flex gap-2 overflow-x-auto">
                 <Button
                   type="button"
@@ -220,6 +233,7 @@ export function InviteBarkadaSheet({
                     setIsQrZoomed(false)
                   }}
                 >
+                  <UsersIcon data-icon="inline-start" />
                   {t(lang, "inviteEveryone")}
                 </Button>
                 {waiting.map((member) => (
@@ -235,7 +249,8 @@ export function InviteBarkadaSheet({
                       setIsQrZoomed(false)
                     }}
                   >
-                    ⏳ {member.name}
+                    <ClockIcon data-icon="inline-start" />
+                    {member.name}
                   </Button>
                 ))}
               </div>

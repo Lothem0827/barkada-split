@@ -1,7 +1,21 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { CameraIcon, PencilIcon } from "lucide-react"
+import {
+  CameraIcon,
+  ClockIcon,
+  CrownIcon,
+  MailIcon,
+  PencilIcon,
+  ReceiptIcon,
+  RefreshCwIcon,
+  ScrollTextIcon,
+  Share2Icon,
+  SparkleIcon,
+  Trash2Icon,
+  UnlockIcon,
+  UsersIcon,
+} from "lucide-react"
 
 import { ActivityLogCard } from "@/components/barkada/activity-log"
 import { ArmButton } from "@/components/barkada/arm-button"
@@ -278,6 +292,7 @@ export function BarkadaView({
           <div className="grid min-h-[44px] grid-cols-3 gap-1 rounded-2xl border border-border bg-muted p-1">
             {HUBS.map((id) => {
               const active = hub === id
+              const Icon = id === "roster" ? UsersIcon : id === "chismis" ? ScrollTextIcon : ReceiptIcon
               const label =
                 id === "roster"
                   ? t(lang, "hubRoster") + " (" + live.members.length + ")"
@@ -289,14 +304,18 @@ export function BarkadaView({
                   key={id}
                   type="button"
                   aria-pressed={active}
-                  className={`min-h-[36px] rounded-xl px-1 text-xs font-bold transition active:scale-95 ${
+                  className={`inline-flex min-h-[36px] items-center justify-center gap-1 rounded-xl px-1 text-xs font-bold transition active:scale-95 ${
                     active ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
                   }`}
                   onClick={() => selectHub(id)}
                 >
+                  <Icon className="size-3.5 shrink-0" />
                   {label}
                   {id === "chismis" && unread > 0 ? (
-                    <span className="ml-1 text-destructive">🔴 {unread}</span>
+                    <span className="ml-1 inline-flex items-center gap-1 text-destructive">
+                      <span className="size-1.5 rounded-full bg-destructive" />
+                      {unread}
+                    </span>
                   ) : null}
                 </button>
               )
@@ -314,6 +333,7 @@ export function BarkadaView({
                   {live.joinCode}
                 </Badge>
                 <Button size="touch" onClick={() => onInvite()}>
+                  <CameraIcon data-icon="inline-start" />
                   {t(lang, "shareInviteLink")}
                 </Button>
               </div>
@@ -380,9 +400,11 @@ export function BarkadaView({
                   }}
                 >
                   <ToggleGroupItem value="future" className="min-h-[40px] flex-1 px-3 text-left">
+                    <SparkleIcon data-icon="inline-start" />
                     {t(lang, "lateComerFuture")}
                   </ToggleGroupItem>
                   <ToggleGroupItem value="past" className="min-h-[40px] flex-1 px-3 text-left">
+                    <RefreshCwIcon data-icon="inline-start" />
                     {t(lang, "lateComerPast")}
                   </ToggleGroupItem>
                 </ToggleGroup>
@@ -439,11 +461,22 @@ export function BarkadaView({
                             ) : null}
                           </span>
                         )}
-                        {member.id === live.treasurer ? <Badge>👑 {t(lang, "treas")}</Badge> : null}
+                        {member.id === live.treasurer ? (
+                          <Badge>
+                            <CrownIcon className="size-3.5" />
+                            {t(lang, "treas")}
+                          </Badge>
+                        ) : null}
                         {claimed ? (
-                          <Badge variant="secondary">🟢 {t(lang, "joined")}</Badge>
+                          <Badge variant="secondary">
+                            <span className="size-2 rounded-full bg-emerald-500" />
+                            {t(lang, "joined")}
+                          </Badge>
                         ) : (
-                          <Badge variant="outline">⏳ {t(lang, "unclaimed")}</Badge>
+                          <Badge variant="outline">
+                            <ClockIcon className="size-3.5" />
+                            {t(lang, "unclaimed")}
+                          </Badge>
                         )}
                         {member.id === as ? <Badge variant="secondary">{t(lang, "you")}</Badge> : null}
                       </ItemTitle>
@@ -492,6 +525,7 @@ export function BarkadaView({
                           className="min-h-[38px]"
                           onClick={() => onInvite(member.id)}
                         >
+                          <MailIcon data-icon="inline-start" />
                           {t(lang, "inviteSeat")}
                         </Button>
                       ) : treasurer && claimed ? (
@@ -501,7 +535,8 @@ export function BarkadaView({
                           className="min-h-[38px] text-muted-foreground"
                           onClick={() => onResetLock(member.id, member.name)}
                         >
-                          🔓 {t(lang, "resetLock")}
+                          <UnlockIcon data-icon="inline-start" />
+                          {t(lang, "resetLock")}
                         </Button>
                       ) : null}
                       {treasurer && member.id !== live.treasurer ? (
@@ -509,7 +544,7 @@ export function BarkadaView({
                           <ArmButton
                             variant="ghost"
                             className="min-h-[38px] text-muted-foreground"
-                            label="🗑️"
+                            label={<Trash2Icon className="size-4" />}
                             armedLabel={t(lang, "removeMember") + "?"}
                             cancelLabel={t(lang, "cancel")}
                             onConfirm={() => queueRemove(member.id)}
@@ -521,7 +556,7 @@ export function BarkadaView({
                             className="min-h-[38px] text-muted-foreground"
                             onClick={() => notify(t(lang, "cannotRemove"), 3200)}
                           >
-                            🗑️
+                            <Trash2Icon className="size-4" />
                           </Button>
                         )
                       ) : null}
@@ -548,6 +583,7 @@ export function BarkadaView({
                 {t(lang, "screenshot")}
               </Button>
               <Button size="touch" variant="outline" onClick={() => void shareWrapped()}>
+                <Share2Icon data-icon="inline-start" />
                 {t(lang, "shareWrapped")}
               </Button>
             </div>

@@ -1,9 +1,11 @@
+import { GhostIcon, GiftIcon, LandmarkIcon, SmileIcon, ZapIcon } from "lucide-react"
+
 import { dayStr, fmtDate, fmtDays, peso, wrappedStats } from "@/lib/calc"
 import { t } from "@/lib/i18n"
 import { memberName, type Lang, type Trip } from "@/lib/types"
 
 function tampoDetail(stats: ReturnType<typeof wrappedStats>, lang: Lang) {
-  if (!stats.tampo) return t(lang, "noTampo") + " 😇"
+  if (!stats.tampo) return t(lang, "noTampo")
   const delay = (stats.tampoKind === "now" ? t(lang, "counting") : t(lang, "maxLate")).replace(
     "{d}",
     dayStr(stats.tampo.value, lang)
@@ -32,17 +34,22 @@ function Line({
 }
 
 function Award({
+  icon: Icon,
   title,
   name,
   detail,
 }: {
+  icon: typeof LandmarkIcon
   title: string
   name: string
   detail: string
 }) {
   return (
     <div className="min-w-0">
-      <div className="text-[10px] tracking-widest opacity-70">{title}</div>
+      <div className="flex items-center gap-1 text-[10px] tracking-widest opacity-70">
+        <Icon className="size-3" />
+        {title}
+      </div>
       <div className="font-heading text-lg leading-tight font-semibold wrap-break-word">{name}</div>
       <div className="text-[11px] wrap-break-word">{detail}</div>
     </div>
@@ -80,19 +87,22 @@ export function WrappedCard({ trip, now, lang }: { trip: Trip; now: number; lang
       <div className="my-3 border-t-2 border-dashed border-paper-line" />
       <div className="grid grid-cols-2 gap-x-3.5 gap-y-2.5">
         <Award
-          title={"🏦 " + t(lang, "financier")}
+          icon={LandmarkIcon}
+          title={t(lang, "financier")}
           name={stats.financier ? nameOf(stats.financier.id) : "—"}
           detail={stats.financier ? peso(stats.financier.value) + " " + t(lang, "inabono") : t(lang, "noAbono")}
         />
         <Award
-          title={"🎁 " + t(lang, "libreMagnet")}
+          icon={GiftIcon}
+          title={t(lang, "libreMagnet")}
           name={stats.libreMagnet ? nameOf(stats.libreMagnet.id) : "—"}
           detail={
             stats.libreMagnet ? stats.libreMagnet.value + "× " + t(lang, "nilibre") : t(lang, "noLibre")
           }
         />
         <Award
-          title={"⚡ " + t(lang, "fastest")}
+          icon={ZapIcon}
+          title={t(lang, "fastest")}
           name={stats.fastest ? nameOf(stats.fastest.id) : "—"}
           detail={
             stats.fastest
@@ -101,7 +111,8 @@ export function WrappedCard({ trip, now, lang }: { trip: Trip; now: number; lang
           }
         />
         <Award
-          title={"👻 " + t(lang, "tampoLegend")}
+          icon={stats.tampo ? GhostIcon : SmileIcon}
+          title={t(lang, "tampoLegend")}
           name={stats.tampo ? nameOf(stats.tampo.id) : "—"}
           detail={tampoDetail(stats, lang)}
         />

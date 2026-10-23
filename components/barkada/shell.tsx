@@ -5,11 +5,13 @@ import { useRouter } from "next/navigation"
 import {
   ArrowLeftIcon,
   ArrowLeftRightIcon,
+  CrownIcon,
   HouseIcon,
   Link2Icon,
   PlusIcon,
   ReceiptIcon,
   SettingsIcon,
+  Undo2Icon,
   UsersIcon,
 } from "lucide-react"
 
@@ -261,7 +263,10 @@ function AppFrame() {
                 {trip.name}
               </h1>
               <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span className="min-w-0 truncate">👑 {memberName(trip, trip.treasurer)}</span>
+                <span className="inline-flex min-w-0 items-center gap-1 truncate">
+                  <CrownIcon className="size-3.5 shrink-0" />
+                  {memberName(trip, trip.treasurer)}
+                </span>
                 {liveInvite ? (
                   <>
                     <span aria-hidden>•</span>
@@ -278,6 +283,7 @@ function AppFrame() {
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              <ProfilePill onClick={() => setProfileOpen(true)} />
               <Button
                 variant="outline"
                 size="icon"
@@ -288,7 +294,6 @@ function AppFrame() {
               >
                 <SettingsIcon />
               </Button>
-              <ProfilePill onClick={() => setProfileOpen(true)} />
             </div>
           </header>
         )}
@@ -504,8 +509,9 @@ function CrownPassBanner() {
     <div className="px-4 pt-4">
       <Card className="border-2 border-primary bg-primary text-primary-foreground ring-0">
         <CardContent className="flex flex-col gap-1">
-          <p className="font-heading text-base font-bold wrap-break-word">
-            {t(lang, "crownBannerTitle").replace("{name}", fromName)}
+          <p className="font-heading inline-flex items-start gap-1.5 text-base font-bold wrap-break-word">
+            <CrownIcon className="mt-0.5 size-4 shrink-0" />
+            <span>{t(lang, "crownBannerTitle").replace("{name}", fromName)}</span>
           </p>
           <p className="text-sm text-primary-foreground/80">{t(lang, "crownBannerBody")}</p>
           <div className="mt-3 grid grid-cols-2 gap-2">
@@ -531,6 +537,7 @@ function CrownPassBanner() {
                   toast.add({ title: result.message, timeout: 1800 })
                 }}
               >
+                <Undo2Icon data-icon="inline-start" />
                 {t(lang, "crownBannerBack").replace("{name}", fromName)}
               </Button>
             ) : (
