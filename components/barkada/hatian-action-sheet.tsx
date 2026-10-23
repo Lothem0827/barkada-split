@@ -1,5 +1,7 @@
 "use client"
 
+import { useRef, useState } from "react"
+
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -27,6 +29,8 @@ export function HatianActionSheet({
   onOpenChange: (open: boolean) => void
 }) {
   const { state, trip, now, confirmPayment, undoPayment } = useBarkada()
+  const [busy, setBusy] = useState(false)
+  const busyRef = useRef(false)
   if (!trip || !payment) return null
 
   const { lang, as } = state
@@ -73,13 +77,19 @@ export function HatianActionSheet({
             <Button
               size="cta"
               className="min-h-[46px]"
+              disabled={busy}
               onClick={() => {
+                if (busyRef.current) return
+                busyRef.current = true
+                setBusy(true)
                 const result = confirmPayment(current.id)
                 toast.add({ title: result.message, timeout: 1800 })
                 if (result.ok) close()
+                busyRef.current = false
+                setBusy(false)
               }}
             >
-              {t(lang, "confirm")}
+              {t(lang, "confirmReceived").replace("{amt}", peso(current.amount))}
             </Button>
           ) : null}
         </div>

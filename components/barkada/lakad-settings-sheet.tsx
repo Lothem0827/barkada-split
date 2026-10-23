@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { ClipboardIcon, XIcon } from "lucide-react"
+import { ClipboardIcon, PencilIcon, XIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -12,6 +12,7 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { toast } from "@/components/ui/toast"
+import { sanitizeGcash } from "@/lib/gcash"
 import { t } from "@/lib/i18n"
 import { inviteUrl } from "@/lib/join-code"
 import { isSeedTripId } from "@/lib/merge-trip"
@@ -45,12 +46,15 @@ export function LakadSettingsSheet({
   onDeleteTrip: () => void
   onCopy: (text: string, label: string) => boolean | void | Promise<boolean | void>
 }) {
-  const { state, trip, treasurer, addMember, removeMember, setGcash, setOpen, setRoundTo, emergencyTakeover } =
+  const { state, trip, treasurer, addMember, editMember, removeMember, setGcash, setOpen, setRoundTo, emergencyTakeover } =
     useBarkada()
   const { lang, as, profile } = state
   const [friendName, setFriendName] = useState("")
   const [friendGcash, setFriendGcash] = useState("")
   const [addError, setAddError] = useState("")
+  const [lateComer, setLateComer] = useState(true)
+  const [renameId, setRenameId] = useState("")
+  const [renameValue, setRenameValue] = useState("")
   const [takeoverOpen, setTakeoverOpen] = useState(false)
   const [takeoverId, setTakeoverId] = useState("")
   const [takeoverReason, setTakeoverReason] = useState("")
@@ -79,7 +83,7 @@ export function LakadSettingsSheet({
   }
 
   function submitFriend() {
-    const result = addMember(friendName, friendGcash)
+    const result = addMember(friendName, friendGcash, lateComer && live.expenses.length > 0)
     if (!result.ok) {
       setAddError(result.message)
       return
@@ -87,6 +91,18 @@ export function LakadSettingsSheet({
     setAddError("")
     setFriendName("")
     setFriendGcash("")
+    notify(result.message)
+  }
+
+  function commitRename() {
+    if (!renameId) return
+    const member = live.members.find((item) => item.id === renameId)
+    const result = editMember(renameId, renameValue, member?.gcash || "")
+    if (!result.ok) {
+      notify(result.message)
+      return
+    }
+    setRenameId("")
     notify(result.message)
   }
 
@@ -132,7 +148,26 @@ export function LakadSettingsSheet({
                         <span className="grid size-6 place-items-center rounded-full bg-muted text-xs font-bold">
                           {mark}
                         </span>
-                        {member.name}
+                        {renameId === member.id ? (
+                          <Input
+                            autoFocus
+                            className="h-8 max-w-[10rem]"
+                            maxLength={40}
+                            value={renameValue}
+                            aria-label={t(lang, "rename")}
+                            onChange={(event) => setRenameValue(event.target.value)}
+                            onBlur={commitRename}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault()
+                                commitRename()
+                              }
+                              if (event.key === "Escape") setRenameId("")
+                            }}
+                          />
+                        ) : (
+                          member.name
+                        )}
                         {claimed ? (
                           <Badge variant="secondary">🟢 {t(lang, "joined")}</Badge>
                         ) : (
@@ -161,9 +196,23 @@ export function LakadSettingsSheet({
                         </Button>
                       ) : null}
                       {treasurer || member.id === as ? (
-                        <Button size="touch" variant="outline" onClick={() => onEditMember(member.id)}>
-                          {t(lang, "edit")}
-                        </Button>
+                        <>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="size-11"
+                            aria-label={t(lang, "rename")}
+                            onClick={() => {
+                              setRenameId(member.id)
+                              setRenameValue(member.name)
+                            }}
+                          >
+                            <PencilIcon />
+                          </Button>
+                          <Button size="touch" variant="outline" onClick={() => onEditMember(member.id)}>
+                            {t(lang, "edit")}
+                          </Button>
+                        </>
                       ) : null}
                       {treasurer && memberCanRemove(live, member.id) ? (
                         <Button
@@ -198,7 +247,7 @@ export function LakadSettingsSheet({
                       id="f-friend-name"
                       enterKeyHint="next"
                       autoComplete="off"
-                      maxLength={40}
+                      maxLength={24}
                       value={friendName}
                       aria-invalid={addError ? true : undefined}
                       aria-describedby={addError ? "f-friend-name-error" : undefined}
@@ -209,6 +258,28 @@ export function LakadSettingsSheet({
                     />
                     {addError ? <FieldError id="f-friend-name-error">{addError}</FieldError> : null}
                   </Field>
+                  {live.expenses.length > 0 ? (
+                    <Field>
+                      <ToggleGroup
+                        variant="outline"
+                        spacing={1}
+                        orientation="vertical"
+                        className="flex w-full flex-col"
+                        value={[lateComer ? "future" : "past"]}
+                        onValueChange={(next) => {
+                          const picked = next[next.length - 1]
+                          if (picked === "future" || picked === "past") setLateComer(picked === "future")
+                        }}
+                      >
+                        <ToggleGroupItem value="future" className="min-h-[40px] w-full justify-start px-3.5 text-left">
+                          {t(lang, "lateComerFuture")}
+                        </ToggleGroupItem>
+                        <ToggleGroupItem value="past" className="min-h-[40px] w-full justify-start px-3.5 text-left">
+                          {t(lang, "lateComerPast")}
+                        </ToggleGroupItem>
+                      </ToggleGroup>
+                    </Field>
+                  ) : null}
                   <Field>
                     <FieldLabel htmlFor="f-friend-gcash">{t(lang, "friendGcash")}</FieldLabel>
                     <Input
@@ -218,13 +289,15 @@ export function LakadSettingsSheet({
                       enterKeyHint="done"
                       autoComplete="off"
                       className="font-mono"
-                      maxLength={30}
+                      maxLength={16}
                       value={friendGcash}
                       placeholder="09XX XXX XXXX"
-                      onChange={(event) => setFriendGcash(event.target.value)}
+                      onChange={(event) => setFriendGcash(sanitizeGcash(event.target.value))}
                     />
                   </Field>
-                  <FieldDescription>{t(lang, "memberAddHint")}</FieldDescription>
+                  <FieldDescription>
+                    {t(lang, lateComer && live.expenses.length > 0 ? "memberAddHintFuture" : "memberAddHint")}
+                  </FieldDescription>
                 </FieldGroup>
                 <Button type="submit" className="min-h-[44px]">
                   {t(lang, "addToRoster")}
@@ -287,8 +360,12 @@ export function LakadSettingsSheet({
                       inputMode="tel"
                       enterKeyHint="done"
                       autoComplete="off"
+                      maxLength={16}
                       defaultValue={live.gcash}
                       placeholder="09XX XXX XXXX"
+                      onInput={(event) => {
+                        event.currentTarget.value = sanitizeGcash(event.currentTarget.value)
+                      }}
                     />
                     <InputGroupAddon align="inline-end">
                       <InputGroupButton

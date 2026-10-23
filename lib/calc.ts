@@ -34,6 +34,14 @@ export function parsePeso(raw: string) {
   return Number(parts[0] || 0) * 100 + Number(((parts[1] || "") + "00").slice(0, 2))
 }
 
+function moneyFieldError(raw: string) {
+  const text = String(raw ?? "").replace(/[,₱\s]/g, "")
+  if (/\.\d{3,}/.test(text)) return "decimals"
+  const amount = parsePeso(raw)
+  if (!(amount > 0)) return "amount"
+  return null
+}
+
 export function dayStr(days: number, lang: Lang = "en") {
   if (uiLang(lang) === "tl") return days === 1 ? "1 araw" : days + " araw"
   return days === 1 ? "1 day" : days + " days"
@@ -106,8 +114,9 @@ export function draftToExpense(trip: Trip, draft: ExpenseDraft): { e: DraftExpen
   if (draft.method === "item") {
     if (!draft.items.length) errs.push("items")
     draft.items.forEach((item, index) => {
+      const priceErr = moneyFieldError(item.price)
       const price = parsePeso(item.price)
-      if (!(price > 0)) errs.push("item-price-" + index)
+      if (priceErr) errs.push(priceErr === "decimals" ? "item-decimals-" + index : "item-price-" + index)
       const eaters = item.eaters.filter((id) => ids.includes(id))
       if (!eaters.length) errs.push("item-eaters-" + index)
       items.push({
@@ -119,7 +128,8 @@ export function draftToExpense(trip: Trip, draft: ExpenseDraft): { e: DraftExpen
     amount = items.reduce((sum, item) => sum + item.price, 0)
   } else {
     amount = parsePeso(draft.amount)
-    if (!(amount > 0)) errs.push("amount")
+    const amountErr = moneyFieldError(draft.amount)
+    if (amountErr) errs.push(amountErr === "decimals" ? "decimals" : "amount")
   }
   const exMode = draft.method === "exclude" || draft.method === "libre"
   const ex = exMode ? draft.ex.filter((id) => ids.includes(id)) : []
@@ -145,17 +155,23 @@ export function draftErrorMessage(errs: string[], lang: Lang) {
   const tl = uiLang(lang) === "tl"
   if (first === "title") return tl ? "Lagyan ng pangalan ang gastos." : "Give this expense a name."
   if (first === "items") return tl ? "Mag-add ng kahit isang item." : "Add at least one item."
+  if (first?.startsWith("item-decimals-")) {
+    return tl
+      ? "Hanggang 2 decimal places lang (centavos, e.g. ₱12.50)"
+      : "Hanggang 2 decimal places lang (centavos, e.g. ₱12.50)"
+  }
   if (first?.startsWith("item-price-")) {
     return tl
-      ? "Item " + (Number(first.slice(11)) + 1) + ": ilagay ang presyo (hal. 250.50)."
-      : "Item " + (Number(first.slice(11)) + 1) + ": enter a price (e.g. 250.50)."
+      ? "Maglagay ng halagang mas mataas sa ₱0.00"
+      : "Maglagay ng halagang mas mataas sa ₱0.00"
   }
   if (first?.startsWith("item-eaters-")) {
     return tl
       ? "Item " + (Number(first.slice(12)) + 1) + ": sino ang kumain?"
       : "Item " + (Number(first.slice(12)) + 1) + ": who ate this?"
   }
-  if (first === "amount") return tl ? "Ilagay ang amount (hal. 1250.50)." : "Enter an amount (e.g. 1250.50)."
+  if (first === "decimals") return tl ? "Hanggang 2 decimal places lang (centavos, e.g. ₱12.50)" : "Hanggang 2 decimal places lang (centavos, e.g. ₱12.50)"
+  if (first === "amount") return tl ? "Maglagay ng halagang mas mataas sa ₱0.00" : "Maglagay ng halagang mas mataas sa ₱0.00"
   if (first === "ex") return tl ? "Sino ang hindi kasama?" : "Who is left out?"
   if (first === "ex-all") return tl ? "Hindi puwedeng lahat excluded." : "Someone has to split this."
   if (first === "too-big") return tl ? "Masyadong malaki ang amount." : "That amount is too large."

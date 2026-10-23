@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { estCalc, peso } from "@/lib/calc"
+import { sanitizeGcash } from "@/lib/gcash"
 import { toast } from "@/components/ui/toast"
 import { t } from "@/lib/i18n"
 import { markJustCreated, parseJoinCodeFromInput } from "@/lib/join-code"
@@ -46,6 +47,8 @@ export function TripSheet({
   const [friends, setFriends] = useState<string[]>([])
   const [gcash, setGcash] = useState(profile.gcash)
   const [error, setError] = useState("")
+  const [isCreating, setIsCreating] = useState(false)
+  const creatingRef = useRef(false)
   const rosterRef = useRef<BarkadaMemberInputHandle>(null)
   const youName = you.trim() || profile.name.trim()
   const suggestions = useMemo(
@@ -61,6 +64,8 @@ export function TripSheet({
           setName("")
           setFriends([])
           setError("")
+          setIsCreating(false)
+          creatingRef.current = false
         } else {
           setYou(profile.name)
           setGcash(profile.gcash)
@@ -93,7 +98,7 @@ export function TripSheet({
                 <Input
                   id="f-you"
                   enterKeyHint="next"
-                  maxLength={40}
+                  maxLength={24}
                   value={you}
                   placeholder="Migs"
                   onChange={(event) => {
@@ -131,10 +136,10 @@ export function TripSheet({
                 inputMode="tel"
                 enterKeyHint="done"
                 className="font-mono"
-                maxLength={30}
+                maxLength={16}
                 value={gcash}
                 placeholder="09XX XXX XXXX"
-                onChange={(event) => setGcash(event.target.value)}
+                onChange={(event) => setGcash(sanitizeGcash(event.target.value))}
               />
             </Field>
             {error ? <FieldError>{error}</FieldError> : null}
@@ -143,10 +148,16 @@ export function TripSheet({
         <DrawerFooter>
           <Button
             size="cta"
+            disabled={isCreating}
             onClick={() => {
+              if (creatingRef.current) return
+              creatingRef.current = true
+              setIsCreating(true)
               const extra = rosterRef.current?.commitDraft() ?? friends
               const result = createTrip(name, youName, extra, gcash)
               if (!result.ok) {
+                creatingRef.current = false
+                setIsCreating(false)
                 setError(result.message)
                 return
               }
@@ -195,7 +206,7 @@ export function MemberSheet({
               <Input
                 id="f-mn"
                 enterKeyHint="next"
-                maxLength={40}
+                maxLength={24}
                 value={name}
                 aria-invalid={error ? true : undefined}
                 aria-describedby={error ? "f-mn-error" : undefined}
@@ -214,10 +225,10 @@ export function MemberSheet({
                 inputMode="tel"
                 enterKeyHint="done"
                 className="font-mono"
-                maxLength={30}
+                maxLength={16}
                 value={gcash}
                 placeholder="09XX XXX XXXX"
-                onChange={(event) => setGcash(event.target.value)}
+                onChange={(event) => setGcash(sanitizeGcash(event.target.value))}
               />
             </Field>
             {!memberId ? <FieldDescription>{t(lang, "memberAddHint")}</FieldDescription> : null}

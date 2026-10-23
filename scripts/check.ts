@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
-import { bindSeat, seatStatus } from "../lib/claim.ts"
+import { bindSeat, excludeFromPastBills, matchesGcashLast4, seatStatus } from "../lib/claim.ts"
+import { isValidGcash, sanitizeGcash } from "../lib/gcash.ts"
 import { balances, distribute, lvl, parsePeso, peso, sharesOf, totalOf, transfers, wrappedStats } from "../lib/calc.ts"
 import { hydrateState } from "../lib/hydrate.ts"
 import { inviteUrl, isJoinCode, makeJoinCode, normalizeJoinCode, parseJoinCodeFromInput } from "../lib/join-code.ts"
@@ -175,6 +176,53 @@ assert.equal(split.a + split.b + split.c, 100)
 assert.equal(parsePeso("1,250.5"), 125050)
 assert.ok(Number.isNaN(parsePeso("12.345")))
 assert.equal(peso(123456789), "₱1,234,567.89")
+assert.equal(sanitizeGcash("abc0917-555-0142"), "0917-555-0142")
+assert.equal(isValidGcash(""), true)
+assert.equal(isValidGcash("09175550142"), true)
+assert.equal(isValidGcash("+639175550142"), true)
+assert.equal(isValidGcash("abc"), false)
+{
+  function owedTrip(cents: number, roundTo: 0 | 100 | 500): Trip {
+    return {
+      id: "t-round",
+      joinCode: "RNDD-00",
+      name: "Round",
+      treasurer: "a",
+      gcash: "",
+      open: false,
+      roundTo,
+      members: [
+        { id: "a", name: "A", gcash: "" },
+        { id: "b", name: "B", gcash: "" },
+      ],
+      expenses: [
+        {
+          id: "e1",
+          title: "x",
+          amount: cents * 2,
+          sc: false,
+          payer: "a",
+          method: "even",
+          ex: [],
+          items: [],
+          addedBy: "a",
+          status: "approved",
+          ts: 1,
+        },
+      ],
+      payments: [],
+    }
+  }
+  const keep = transfers(owedTrip(200, 500))[0]
+  assert.equal(keep.amount, 200)
+  assert.equal(keep.pay, 200)
+  assert.equal(keep.roundingDiff, 0)
+  const up = transfers(owedTrip(300, 500))[0]
+  assert.equal(up.amount, 300)
+  assert.equal(up.pay, 500)
+  assert.equal(up.exactAmount, 300)
+  assert.equal(up.roundingDiff, 200)
+}
 console.log("ok  money helpers")
 
 assert.throws(() => importTrip("not a code at all"))
@@ -209,7 +257,8 @@ const custom = hydrateState({ lakads: [{ ...state.lakads[0], id: "t-custom" }] }
 assert.equal(custom.onboarded, true)
 assert.equal(custom.showTestTools, false)
 assert.equal(hydrateState({ lakads: [] }, true).onboarded, false)
-assert.ok(sampleReminder("tita", "en").includes("Migs") && !/\{\w+\}/.test(sampleReminder("tita", "en")))
+assert.ok(sampleReminder("tita", "en", "Migs").includes("Migs") && !/\{\w+\}/.test(sampleReminder("tita", "en", "Migs")))
+assert.ok(sampleReminder("tita", "en").includes("Bea"))
 console.log("ok  onboarding hydrate + sample reminder")
 
 assert.equal(state.lakads[0].joinCode, "SIAR-26")
@@ -240,7 +289,57 @@ const openTrip = { ...seeded, open: true }
 const added = bindSeat(openTrip, "new", { name: "Jigs", gcash: "0917", avatar: "😎" }, "uid-jigs")
 assert.equal(added.ok, true)
 if (added.ok) assert.equal(added.trip.members.at(-1)?.claimedByUid, "uid-jigs")
+assert.equal(matchesGcashLast4("0917 555 0101", "0101"), true)
+assert.equal(matchesGcashLast4("0917 555 0101", "9999"), false)
+assert.equal(matchesGcashLast4("091", "0091"), false)
 console.log("ok  join codes + seat claim locks")
+
+{
+  const base: Trip = {
+    id: "t-late",
+    joinCode: "LATE-26",
+    name: "Late",
+    treasurer: "a",
+    gcash: "",
+    open: true,
+    roundTo: 0,
+    members: [
+      { id: "a", name: "A", gcash: "" },
+      { id: "b", name: "B", gcash: "" },
+    ],
+    expenses: [
+      {
+        id: "e1",
+        title: "taxi",
+        amount: 10000,
+        sc: false,
+        payer: "a",
+        method: "even",
+        ex: [],
+        items: [],
+        addedBy: "a",
+        status: "approved",
+        ts: 1,
+      },
+    ],
+    payments: [],
+  }
+  const withNew = { ...base, members: [...base.members, { id: "c", name: "C", gcash: "" }] }
+  const future = excludeFromPastBills(withNew, "c")
+  const even = future.expenses[0]
+  assert.equal(even.method, "exclude")
+  assert.deepEqual(even.ex, ["c"])
+  const futureShares = sharesOf(future, even)
+  assert.equal(futureShares.c, undefined)
+  assert.equal((futureShares.a || 0) + (futureShares.b || 0), 10000)
+  const pastShares = sharesOf(withNew, withNew.expenses[0])
+  assert.equal(pastShares.c, 3333)
+  assert.ok(even.ts >= base.expenses[0].ts)
+  const merged = mergeTrip(future, withNew, true)
+  assert.equal(merged.expenses[0].method, "exclude")
+  assert.deepEqual(merged.expenses[0].ex, ["c"])
+  console.log("ok  late-comer future vs past pantay")
+}
 
 function liveExpense(id: string, addedBy: string, ts: number): Expense {
   return {
@@ -499,9 +598,10 @@ function liveExpense(id: string, addedBy: string, ts: number): Expense {
 }
 
 {
-  assert.equal(titleCaseName("carl"), "Carl")
-  assert.equal(titleCaseName("  carl   de la cruz "), "Carl De La Cruz")
-  assert.equal(titleCaseName("CARL"), "Carl")
+  assert.equal(titleCaseName("carl"), "carl")
+  assert.equal(titleCaseName("  DJ   "), "DJ")
+  assert.equal(titleCaseName("Jigs 🏄‍♂️"), "Jigs 🏄‍♂️")
+  assert.equal(titleCaseName("<script>Bea"), "scriptBea")
   assert.equal(titleCaseName(""), "")
   assert.equal(hasNameSeparator("Carl,"), true)
   assert.equal(hasNameSeparator("Carl"), false)
@@ -512,6 +612,12 @@ function liveExpense(id: string, addedBy: string, ts: number): Expense {
   assert.deepEqual(splitNameDraft("Carl & Mel", false), { complete: ["Carl"], rest: "Mel" })
   assert.deepEqual(splitNameDraft("Carl&Mel", false), { complete: [], rest: "Carl&Mel" })
   assert.deepEqual(splitNameDraft("Carl,\nMel", true), { complete: ["Carl", "Mel"], rest: "" })
+  const qa = splitNameDraft("Bea, Bea, bea, <script>x, 🍕🔥, ZZZZZZZZZZZZZZZZZZZZZZZZZZ, , Jomar", true)
+  assert.ok(qa.complete.includes("Jomar"))
+  assert.ok(qa.complete.includes("🍕🔥"))
+  const qaCommit = commitNames("Host", [], qa.complete)
+  assert.ok(qaCommit.names.includes("Jomar"))
+  assert.ok(qaCommit.skipped.length > 0)
   const vsYou = commitNames("Carl", [], ["carl", "Mel"])
   assert.deepEqual(vsYou.names, ["Mel"])
   assert.equal(vsYou.flash, "Carl")

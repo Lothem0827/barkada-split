@@ -4,11 +4,13 @@ import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { ArrowLeftIcon, CheckIcon, CrownIcon, LockIcon, PlusIcon, UserRoundIcon } from "lucide-react"
 
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { seatStatus } from "@/lib/claim"
+import { gcashLast4, seatStatus } from "@/lib/claim"
+import { isValidGcash, sanitizeGcash } from "@/lib/gcash"
 import { t } from "@/lib/i18n"
 import { normalizeJoinCode } from "@/lib/join-code"
 import { fetchTripPreview, type TripPreview } from "@/lib/supabase"
@@ -46,6 +48,11 @@ export function JoinView({ code, seat }: { code: string; seat?: string }) {
   const [gcash, setGcash] = useState(profile.gcash)
   const [pin, setPin] = useState("")
   const [busy, setBusy] = useState(false)
+  const [inAppBrowser, setInAppBrowser] = useState(false)
+
+  useEffect(() => {
+    setInAppBrowser(/FBAN|FBAV|Instagram/i.test(navigator.userAgent))
+  }, [])
 
   const localTrip = useMemo(
     () => lakads.find((item) => item.joinCode === joinCode || normalizeJoinCode(item.joinCode) === joinCode) ?? null,
@@ -130,6 +137,10 @@ export function JoinView({ code, seat }: { code: string; seat?: string }) {
       setError(t(lang, "obNeedClaim"))
       return
     }
+    if (!isValidGcash(gcash)) {
+      setError(t(lang, "badGcash"))
+      return
+    }
     setBusy(true)
     const found = memberId !== "new" ? trip.members.find((item) => item.id === memberId) : null
     const result = await store.claimSeat(trip, memberId, {
@@ -166,6 +177,11 @@ export function JoinView({ code, seat }: { code: string; seat?: string }) {
       </header>
 
       <main className={`flex flex-1 flex-col gap-5 overflow-y-auto px-4 py-5 ${selected ? "pb-40" : ""}`}>
+        {inAppBrowser ? (
+          <Alert className="border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-50">
+            <AlertDescription>{t(lang, "messengerBanner")}</AlertDescription>
+          </Alert>
+        ) : null}
         {loading ? <p className="text-sm text-muted-foreground">{t(lang, "joinLoading")}</p> : null}
 
         {!loading && !trip && !error ? <p className="text-sm text-muted-foreground">{t(lang, "joinMissing")}</p> : null}
@@ -246,7 +262,9 @@ export function JoinView({ code, seat }: { code: string; seat?: string }) {
                   {t(lang, "takenHint").replace("{name}", memberName(trip, trip.treasurer))}
                 </p>
                 <Field>
-                  <FieldLabel htmlFor="join-pin">{t(lang, "pinAsk")}</FieldLabel>
+                  <FieldLabel htmlFor="join-pin">
+                    {t(lang, gcashLast4(recoverMember.gcash) ? "pinAskGcash" : "pinAsk")}
+                  </FieldLabel>
                   <Input
                     id="join-pin"
                     type="text"
@@ -284,7 +302,7 @@ export function JoinView({ code, seat }: { code: string; seat?: string }) {
                   id="join-name"
                   enterKeyHint="next"
                   value={name}
-                  maxLength={40}
+                  maxLength={24}
                   onChange={(event) => setName(event.target.value)}
                 />
               </Field>
@@ -297,9 +315,10 @@ export function JoinView({ code, seat }: { code: string; seat?: string }) {
                 inputMode="tel"
                 enterKeyHint="done"
                 className="h-11 font-mono text-base"
+                maxLength={16}
                 value={gcash}
                 placeholder="09XX XXX XXXX"
-                onChange={(event) => setGcash(event.target.value)}
+                onChange={(event) => setGcash(sanitizeGcash(event.target.value))}
               />
               <p className="text-sm text-muted-foreground">{t(lang, "claimGcashHint")}</p>
             </Field>

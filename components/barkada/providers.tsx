@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react"
 
-import { t } from "@/lib/i18n"
+import { AppShellSkeleton } from "@/components/barkada/app-shell-skeleton"
 import { useBarkadaStore } from "@/lib/store"
 import { useSyncEngine } from "@/lib/sync"
 
@@ -17,13 +17,7 @@ export function BarkadaProvider({ children }: { children: ReactNode }) {
 
   useSyncEngine()
 
-  if (!ready) {
-    return (
-      <div className="mx-auto flex min-h-dvh w-full max-w-[560px] flex-col bg-background px-4 py-6">
-        <p className="text-sm text-muted-foreground">{t("en", "loading")}</p>
-      </div>
-    )
-  }
+  if (!ready) return <AppShellSkeleton />
 
   return <>{children}</>
 }

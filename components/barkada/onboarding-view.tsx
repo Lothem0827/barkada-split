@@ -22,6 +22,7 @@ import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { isValidGcash, sanitizeGcash } from "@/lib/gcash"
 import { personaLabel, t, type CopyKey } from "@/lib/i18n"
 import { markJustCreated, parseJoinCodeFromInput } from "@/lib/join-code"
 import { sampleReminder } from "@/lib/reminders"
@@ -62,6 +63,8 @@ export function OnboardingView() {
   const [roundTo, setRoundTo] = useState<RoundTo>(0)
   const [code, setCode] = useState("")
   const [error, setError] = useState("")
+  const [isCreating, setIsCreating] = useState(false)
+  const creatingRef = useRef(false)
   const rosterRef = useRef<BarkadaMemberInputHandle>(null)
 
   function notify(result: { ok: boolean; message: string; tripId?: string }) {
@@ -152,9 +155,13 @@ export function OnboardingView() {
                     role="tab"
                     aria-selected={slide === index}
                     aria-label={t(lang, hook.title)}
-                    className={`h-2.5 rounded-full transition-all ${slide === index ? "w-6 bg-foreground" : "w-2.5 bg-muted-foreground/40"}`}
+                    className="flex min-h-[28px] min-w-[28px] items-center justify-center"
                     onClick={() => setSlide(index)}
-                  />
+                  >
+                    <span
+                      className={`h-2.5 rounded-full transition-all ${slide === index ? "w-6 bg-foreground" : "w-2.5 bg-muted-foreground/40"}`}
+                    />
+                  </button>
                 ))}
               </div>
             </div>
@@ -171,7 +178,7 @@ export function OnboardingView() {
                   <Input
                     id="ob-nick"
                     enterKeyHint="next"
-                    maxLength={40}
+                    maxLength={24}
                     value={draft.name}
                     placeholder={t(lang, "obNickPh")}
                     onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
@@ -179,7 +186,7 @@ export function OnboardingView() {
                 </Field>
                 <Field>
                   <FieldLabel>{t(lang, "obAvatar")}</FieldLabel>
-                  <div className="no-scrollbar -mx-4 min-w-0 overflow-x-auto overscroll-x-contain snap-x px-4">
+                  <div className="no-scrollbar -mx-4 min-w-0 overflow-x-auto overscroll-x-contain snap-x px-1 py-1">
                     <div className="flex w-max gap-2">
                       {AVATARS.map((avatar) => (
                         <Button
@@ -204,10 +211,10 @@ export function OnboardingView() {
                     inputMode="tel"
                     enterKeyHint="done"
                     className="font-mono"
-                    maxLength={30}
+                    maxLength={16}
                     value={draft.gcash}
                     placeholder="09XX XXX XXXX"
-                    onChange={(event) => setDraft((current) => ({ ...current, gcash: event.target.value }))}
+                    onChange={(event) => setDraft((current) => ({ ...current, gcash: sanitizeGcash(event.target.value) }))}
                   />
                 </Field>
                 <Field>
@@ -231,7 +238,7 @@ export function OnboardingView() {
                     </ToggleGroup>
                   </div>
                   <p className="text-sm text-muted-foreground wrap-break-word">
-                    {sampleReminder(draft.persona, lang).split("\n")[0]}
+                    {sampleReminder(draft.persona, lang, draft.name || "Bea").split("\n")[0]}
                   </p>
                 </Field>
               </FieldGroup>
@@ -396,17 +403,33 @@ export function OnboardingView() {
               </>
             ) : null}
             {step === "profile" ? (
-              <Button size="cta" disabled={!nickReady} onClick={() => go("path")}>
+              <Button
+                size="cta"
+                disabled={!nickReady}
+                onClick={() => {
+                  if (!isValidGcash(draft.gcash)) {
+                    setError(t(lang, "badGcash"))
+                    return
+                  }
+                  go("path")
+                }}
+              >
                 {t(lang, "obContinue")}
               </Button>
             ) : null}
             {step === "create" ? (
               <Button
                 size="cta"
-                disabled={!tripName.trim() || !rosterReady}
+                disabled={isCreating || !tripName.trim() || !rosterReady}
                 onClick={() => {
+                  if (creatingRef.current) return
+                  creatingRef.current = true
+                  setIsCreating(true)
                   const extra = rosterRef.current?.commitDraft() ?? friends
-                  notify(store.startLakad(tripName, extra, openMode, roundTo, draft))
+                  if (!notify(store.startLakad(tripName, extra, openMode, roundTo, draft))) {
+                    creatingRef.current = false
+                    setIsCreating(false)
+                  }
                 }}
               >
                 {t(lang, "obStart")}

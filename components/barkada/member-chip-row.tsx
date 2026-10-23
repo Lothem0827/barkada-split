@@ -41,7 +41,7 @@ export function MemberChipRow({
             >
               {initial(member.name)}
             </span>
-            {label ? label(member) : member.name}
+            <span className="max-w-[140px] truncate">{label ? label(member) : member.name}</span>
           </Button>
         )
       })}

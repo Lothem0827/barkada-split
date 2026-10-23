@@ -195,6 +195,8 @@ export type Transfer = {
   to: string
   amount: number
   pay: number
+  exactAmount: number
+  roundingDiff: number
 }
 
 export type EstRow = { name: string; price: string }
@@ -417,7 +419,7 @@ export function collectUniqueNicknames(you: string, others: string[]) {
   const extra: string[] = []
   const youName = you.trim()
   for (const part of others) {
-    const trimmed = part.trim().slice(0, 40)
+    const trimmed = part.trim().slice(0, 24)
     if (!trimmed) continue
     const taken = findTakenName([youName, ...extra], trimmed)
     if (taken) {
