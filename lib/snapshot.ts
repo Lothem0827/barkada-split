@@ -318,6 +318,7 @@ export function sanitizeTrip(raw: unknown): Trip {
         actorName: str(entry.actorName, 40, "emergency actor", true) || "?",
         details: str(entry.details, 280, "emergency details", true),
         ts: entry.ts as number,
+        ...(entry.ack === true ? { ack: true as const } : {}),
       },
     ]
   })

@@ -27,7 +27,6 @@ import {
   CopySheet,
   EstimatorSheet,
   JoinSheet,
-  MemberSheet,
   TripSheet,
 } from "@/components/barkada/sheets"
 import { WrappedCard } from "@/components/barkada/wrapped-card"
@@ -42,6 +41,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/toast"
 import { t } from "@/lib/i18n"
@@ -49,7 +49,15 @@ import { consumeJustCreated } from "@/lib/join-code"
 import { isSeedTripId } from "@/lib/merge-trip"
 import { copyText } from "@/lib/snapshot"
 import { useBarkada } from "@/lib/store"
-import { editExpenseDraft, memberName, newExpenseDraft, type ExpenseDraft, type ShotRatio, type Tab } from "@/lib/types"
+import {
+  editExpenseDraft,
+  memberName,
+  newExpenseDraft,
+  unackedCrownPass,
+  type ExpenseDraft,
+  type ShotRatio,
+  type Tab,
+} from "@/lib/types"
 
 const TABS: { id: Tab; icon: typeof HouseIcon; key: "home" | "gastos" | "hatian" | "barkada" }[] = [
   { id: "home", icon: HouseIcon, key: "home" },
@@ -58,12 +66,7 @@ const TABS: { id: Tab; icon: typeof HouseIcon; key: "home" | "gastos" | "hatian"
   { id: "barkada", icon: UsersIcon, key: "barkada" },
 ]
 
-type Confirm =
-  | { kind: "delete"; id: string }
-  | { kind: "handoff"; id: string; name: string }
-  | { kind: "reset-lock"; id: string; name: string }
-  | { kind: "del-trip" }
-  | null
+type Confirm = { kind: "delete"; id: string } | { kind: "reset-lock"; id: string; name: string } | null
 
 export function Shell() {
   return <AppFrame />
@@ -106,8 +109,6 @@ function AppFrame() {
   const [expenseOpen, setExpenseOpen] = useState(false)
   const [draft, setDraft] = useState<ExpenseDraft | null>(null)
   const [tripOpen, setTripOpen] = useState(false)
-  const [memberOpen, setMemberOpen] = useState(false)
-  const [memberId, setMemberId] = useState<string | null>(null)
   const [joinOpen, setJoinOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [inviteSeat, setInviteSeat] = useState<string | null>(null)
@@ -163,12 +164,7 @@ function AppFrame() {
   function runConfirm() {
     if (!confirm) return
     if (confirm.kind === "delete") run(store.deleteExpense(confirm.id))
-    else if (confirm.kind === "handoff") run(store.handoff(confirm.id))
     else if (confirm.kind === "reset-lock") void store.resetSeatLock(confirm.id).then(run)
-    else if (confirm.kind === "del-trip") {
-      run(store.deleteTrip())
-      router.push("/")
-    }
     setDialogOpen(false)
   }
 
@@ -244,62 +240,67 @@ function AppFrame() {
             <ProfilePill onClick={() => setProfileOpen(true)} />
           </header>
         ) : (
-          <header className="flex flex-col gap-3 border-b px-4 pt-[max(12px,env(safe-area-inset-top))] pb-4">
-            <div className="flex items-start gap-2">
+          <header className="flex items-start gap-2 border-b px-4 pt-[max(12px,env(safe-area-inset-top))] pb-3">
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-10 shrink-0 rounded-xl"
+              aria-label={t(lang, "back")}
+              onClick={() => {
+                store.goHome()
+                router.push("/")
+              }}
+            >
+              <ArrowLeftIcon />
+            </Button>
+            <div className="min-w-0 flex-1">
+              <h1 className="line-clamp-2 text-base leading-tight font-extrabold text-foreground sm:text-lg">
+                {trip.name}
+              </h1>
+              <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="min-w-0 truncate">👑 {memberName(trip, trip.treasurer)}</span>
+                {liveInvite ? (
+                  <>
+                    <span aria-hidden>•</span>
+                    <button
+                      type="button"
+                      onClick={() => openInvite()}
+                      className="inline-flex items-center gap-1 rounded-md bg-card px-1.5 py-0.5 font-mono text-[11px] font-semibold text-foreground hover:bg-border/40"
+                    >
+                      <Link2Icon className="size-3" />
+                      {trip.joinCode}
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
               <Button
                 variant="outline"
                 size="icon"
-                className="size-11"
-                aria-label={t(lang, "back")}
-                onClick={() => {
-                  store.goHome()
-                  router.push("/")
-                }}
+                className="size-10 rounded-full"
+                aria-label={t(lang, "settingsBtn")}
+                title={t(lang, "settingsBtn")}
+                onClick={() => setSettingsOpen(true)}
               >
-                <ArrowLeftIcon />
+                <SettingsIcon />
               </Button>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                  {t(lang, "treas")}: {memberName(trip, trip.treasurer)}
-                  {trip.open ? " · " + t(lang, "openModeOn") : ""}
-                </p>
-                <div className="flex items-start justify-between gap-2">
-                  <h1 className="min-w-0 truncate font-heading text-xl font-bold">{trip.name}</h1>
-                  <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                    {liveInvite ? (
-                      <Button
-                        variant="outline"
-                        className="min-h-[38px] shrink-0 rounded-xl px-3 text-sm font-semibold"
-                        onClick={() => openInvite()}
-                      >
-                        <Link2Icon data-icon="inline-start" />
-                        {t(lang, "invitePill").replace("{code}", trip.joinCode)}
-                      </Button>
-                    ) : null}
-                    <Button
-                      variant="outline"
-                      className="min-h-[38px] shrink-0 rounded-xl px-3 text-sm font-semibold"
-                      onClick={() => setSettingsOpen(true)}
-                    >
-                      <SettingsIcon data-icon="inline-start" />
-                      {t(lang, "settingsBtn")}
-                    </Button>
-                  </div>
-                </div>
-              </div>
               <ProfilePill onClick={() => setProfileOpen(true)} />
             </div>
           </header>
         )}
 
         {trip && tab !== "home" ? (
-          <IncomingNudge
-            onPay={(focusKey) => {
-              store.setTab("hatian")
-              setHatianFocus(focusKey)
-            }}
-            onDismiss={() => {}}
-          />
+          <>
+            <CrownPassBanner />
+            <IncomingNudge
+              onPay={(focusKey) => {
+                store.setTab("hatian")
+                setHatianFocus(focusKey)
+              }}
+              onDismiss={() => {}}
+            />
+          </>
         ) : null}
 
         <main
@@ -364,7 +365,12 @@ function AppFrame() {
             ) : null}
           </TabsContent>
           <TabsContent value="barkada">
-            {trip ? <BarkadaView /> : null}
+            {trip ? (
+              <BarkadaView
+                onCopy={copy}
+                onResetLock={(id, name) => openConfirm({ kind: "reset-lock", id, name })}
+              />
+            ) : null}
           </TabsContent>
         </main>
 
@@ -411,23 +417,15 @@ function AppFrame() {
         }}
       />
       {tripOpen ? <TripSheet key="trip" open onOpenChange={setTripOpen} /> : null}
-      {memberOpen ? (
-        <MemberSheet key={memberId ?? "new-member"} open memberId={memberId} onOpenChange={setMemberOpen} />
-      ) : null}
       {joinOpen ? <JoinSheet key="join" open onOpenChange={setJoinOpen} /> : null}
       <ProfileSheet open={profileOpen} onOpenChange={setProfileOpen} />
       {trip ? (
         <LakadSettingsSheet
           open={settingsOpen}
-          onEditMember={(id) => {
-            setMemberId(id)
-            setMemberOpen(true)
+          onDeleteTrip={() => {
+            run(store.deleteTrip())
+            router.push("/")
           }}
-          onInvite={(memberId) => openInvite(memberId)}
-          onDeleteTrip={() => openConfirm({ kind: "del-trip" })}
-          onHandoff={(id, name) => openConfirm({ kind: "handoff", id, name })}
-          onResetLock={(id, name) => openConfirm({ kind: "reset-lock", id, name })}
-          onCopy={copy}
           onOpenChange={setSettingsOpen}
         />
       ) : null}
@@ -460,36 +458,78 @@ function AppFrame() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {confirm?.kind === "delete"
-                ? t(lang, "deleteAsk")
-                : confirm?.kind === "handoff"
-                  ? t(lang, "handAsk")
-                  : confirm?.kind === "reset-lock"
-                    ? t(lang, "resetLockAsk")
-                    : t(lang, "delTripAsk")}
+              {confirm?.kind === "delete" ? t(lang, "deleteAsk") : t(lang, "resetLockAsk")}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirm?.kind === "delete"
                 ? t(lang, "deleteBody")
-                : confirm?.kind === "handoff"
-                  ? t(lang, "handBody").replace("{name}", confirm.name)
-                  : confirm?.kind === "reset-lock"
-                    ? t(lang, "resetLockBody").replace("{name}", confirm.name)
-                    : t(lang, "delTripBody")}
+                : t(lang, "resetLockBody").replace("{name}", confirm?.name ?? "")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="min-h-[50px]">{t(lang, "cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className="min-h-[50px]"
-              variant={confirm?.kind === "delete" || confirm?.kind === "del-trip" ? "destructive" : "default"}
+              variant={confirm?.kind === "delete" ? "destructive" : "default"}
               onClick={runConfirm}
             >
-              {confirm?.kind === "delete" || confirm?.kind === "del-trip" ? t(lang, "del") : t(lang, "save")}
+              {confirm?.kind === "delete" ? t(lang, "del") : t(lang, "save")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  )
+}
+
+function CrownPassBanner() {
+  const { state, trip, handoff, ackCrownPass } = useBarkada()
+  if (!trip) return null
+  const entry = unackedCrownPass(trip, state.as)
+  if (!entry) return null
+  const { lang } = state
+  const fromName = memberName(trip, entry.actorMemberId)
+  const canReturn = trip.members.some((member) => member.id === entry.actorMemberId)
+
+  return (
+    <div className="px-4 pt-4">
+      <Card className="border-2 border-primary bg-primary text-primary-foreground ring-0">
+        <CardContent className="flex flex-col gap-1">
+          <p className="font-heading text-base font-bold wrap-break-word">
+            {t(lang, "crownBannerTitle").replace("{name}", fromName)}
+          </p>
+          <p className="text-sm text-primary-foreground/80">{t(lang, "crownBannerBody")}</p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <Button
+              className="btn-primary min-h-[42px] bg-primary-foreground text-primary hover:bg-primary-foreground/90"
+              onClick={() => ackCrownPass()}
+            >
+              {t(lang, "crownBannerAck")}
+            </Button>
+            {canReturn ? (
+              <Button
+                variant="secondary"
+                className="btn-soft min-h-[42px]"
+                onClick={() => {
+                  const result = handoff(entry.actorMemberId)
+                  if (result.ok) {
+                    toast.add({
+                      title: t(lang, "crownBackToast").replace("{name}", fromName),
+                      timeout: 1800,
+                    })
+                    return
+                  }
+                  toast.add({ title: result.message, timeout: 1800 })
+                }}
+              >
+                {t(lang, "crownBannerBack").replace("{name}", fromName)}
+              </Button>
+            ) : (
+              <span />
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

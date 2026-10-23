@@ -97,10 +97,10 @@ export function ProfilePill({ onClick }: { onClick: () => void }) {
       type="button"
       onClick={onClick}
       aria-label={t(state.lang, "openProfile")}
-      className="flex min-h-[38px] max-w-[11rem] shrink-0 items-center gap-2 rounded-full border border-border bg-card px-3 text-sm font-semibold shadow-sm"
+      className="flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 transition active:scale-95"
     >
       <span className="shrink-0 text-base">{mark}</span>
-      <span className="min-w-0 truncate">{name}</span>
+      <span className="max-w-[72px] truncate text-sm font-bold">{name}</span>
       <span
         className={`size-2 shrink-0 rounded-full ${linked ? "bg-emerald-500" : "bg-amber-400"}`}
         aria-hidden

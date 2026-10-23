@@ -3,7 +3,6 @@
 import { useState } from "react"
 
 import { ArmButton } from "@/components/barkada/arm-button"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -16,11 +15,10 @@ import {
 } from "@/components/ui/card"
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { balances, fmtDate, namesList, peso, sharesOf, totalOf, wrappedStats } from "@/lib/calc"
-import { barkadaCountLabel, t, type CopyKey } from "@/lib/i18n"
+import { t, type CopyKey } from "@/lib/i18n"
 import { isSeedTripId } from "@/lib/merge-trip"
 import { useBarkada } from "@/lib/store"
-import { canEditExpense, initial, isTreasurer, memberName, type Expense, type Lang, type Trip } from "@/lib/types"
-import { cn } from "cn"
+import { canEditExpense, isTreasurer, memberName, type Expense, type Lang, type Trip } from "@/lib/types"
 
 const METHOD_KEY: Record<Expense["method"], CopyKey> = {
   even: "even",
@@ -337,7 +335,6 @@ export function GastosView({
   const review = treasurer ? [...pending, ...proposals, ...rejected] : [...pending, ...rejected]
   const queueCount = pending.length + proposals.length
   const waiting = trip.members.filter((member) => !member.claimedByUid)
-  const claimed = trip.members.filter((member) => member.claimedByUid)
   const showInvite = waiting.length > 0 && !isSeedTripId(trip.id)
 
   return (
@@ -355,29 +352,11 @@ export function GastosView({
       {showInvite ? (
         <Card>
           <CardContent className="flex items-center gap-3 py-3">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center">
-                {claimed.slice(0, 4).map((member, index) => (
-                  <Avatar key={member.id} size="sm" className={cn(index ? "-ml-1.5" : undefined, "ring-2 ring-background")}>
-                    <AvatarFallback>🟢 {initial(member.name)}</AvatarFallback>
-                  </Avatar>
-                ))}
-                {waiting.slice(0, 3).map((member, index) => (
-                  <Avatar
-                    key={member.id}
-                    size="sm"
-                    className={cn(claimed.length || index ? "-ml-1.5" : undefined, "ring-2 ring-background opacity-70")}
-                  >
-                    <AvatarFallback>⚪ {initial(member.name)}</AvatarFallback>
-                  </Avatar>
-                ))}
-              </div>
-              <p className="mt-1 truncate text-xs text-muted-foreground">
-                {barkadaCountLabel(lang, trip.members)}
-              </p>
-            </div>
-            <Button size="touch" className="min-h-[40px] shrink-0" onClick={onInvite}>
-              {t(lang, "inviteLeft").replace("{n}", String(waiting.length))}
+            <p className="min-w-0 flex-1 text-sm font-medium">
+              ⏳ {t(lang, "inviteLeft").replace("{n}", String(waiting.length))}
+            </p>
+            <Button size="touch" className="min-h-[38px] shrink-0" onClick={onInvite}>
+              📲 {t(lang, "invitePill").replace("{code}", trip.joinCode)}
             </Button>
           </CardContent>
         </Card>

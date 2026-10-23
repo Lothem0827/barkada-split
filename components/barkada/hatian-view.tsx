@@ -10,10 +10,12 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
+import { Input } from "@/components/ui/input"
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { balances, dayStr, daysOwed, fmtAgo, fmtDate, peso, plain, potOf, transfers } from "@/lib/calc"
 import { toast } from "@/components/ui/toast"
+import { sanitizeGcash } from "@/lib/gcash"
 import { sulkMeta, t, type CopyKey } from "@/lib/i18n"
 import {
   canConfirmTransfer,
@@ -59,12 +61,14 @@ export function HatianView({
   onFocused?: () => void
 }) {
   const store = useBarkada()
-  const { state, trip, now, markPaid, confirmPayment, sendNudge } = store
+  const { state, trip, now, markPaid, confirmPayment, sendNudge, editMember, saveProfile } = store
   const treasurer = trip ? isTreasurer(state, trip) : false
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [cardPersona, setCardPersona] = useState<Record<string, Persona>>({})
   const [hatianScope, setHatianScope] = useState<HatianScope>(treasurer ? "all" : "mine")
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null)
+  const [addingGcashKey, setAddingGcashKey] = useState<string | null>(null)
+  const [gcashDraft, setGcashDraft] = useState("")
   const [payBusy, setPayBusy] = useState(false)
   const payBusyRef = useRef(false)
   const cardRefs = useRef<Record<string, HTMLElement | null>>({})
@@ -100,7 +104,7 @@ export function HatianView({
   }, [focusKey, onFocused, state.as])
 
   if (!trip) return null
-  const { lang, as, persona } = state
+  const { lang, as, persona, profile } = state
   const bals = balances(trip)
   const list = transfers(trip)
   const mine = list.filter((row) => row.from === as || row.to === as)
@@ -297,6 +301,11 @@ export function HatianView({
                       {t(lang, "gcashOf")} {toName}:{" "}
                       <span className="font-mono select-all">{number || t(lang, "noGcash")}</span>
                     </p>
+                    {!number && role === "debtor" ? (
+                      <p className="text-sm font-medium text-destructive">
+                        {t(lang, "creditorNoGcash").replace("{name}", toName)}
+                      </p>
+                    ) : null}
                     <div className="grid grid-cols-2 gap-2">
                       <CopyAction
                         size="touch"
@@ -319,6 +328,49 @@ export function HatianView({
                       </CopyAction>
                     </div>
                   </>
+                ) : null}
+                {role === "creditor" && !number ? (
+                  addingGcashKey === key ? (
+                    <div className="flex gap-2">
+                      <Input
+                        autoFocus
+                        type="tel"
+                        inputMode="tel"
+                        className="font-mono"
+                        maxLength={16}
+                        value={gcashDraft}
+                        placeholder="09XX XXX XXXX"
+                        onChange={(event) => setGcashDraft(sanitizeGcash(event.target.value))}
+                      />
+                      <Button
+                        size="touch"
+                        onClick={() => {
+                          const result = editMember(row.to, toName, gcashDraft)
+                          if (!result.ok) {
+                            toast.add({ title: result.message, timeout: 1800 })
+                            return
+                          }
+                          saveProfile({ ...profile, persona, gcash: sanitizeGcash(gcashDraft) })
+                          setAddingGcashKey(null)
+                          setGcashDraft("")
+                          toast.add({ title: result.message, timeout: 1800 })
+                        }}
+                      >
+                        {t(lang, "save")}
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      size="touch"
+                      className="w-full"
+                      onClick={() => {
+                        setAddingGcashKey(key)
+                        setGcashDraft(profile.gcash)
+                      }}
+                    >
+                      {t(lang, "addMyGcash")}
+                    </Button>
+                  )
                 ) : null}
                 {role === "debtor" && pending ? (
                   <Badge variant="secondary" className="w-fit whitespace-normal">

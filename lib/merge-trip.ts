@@ -1,4 +1,11 @@
-import { emergencyLogOf, higherNudgeStatus, SEED_TRIP_IDS, type Nudge, type Trip } from "@/lib/types"
+import {
+  emergencyLogOf,
+  higherNudgeStatus,
+  SEED_TRIP_IDS,
+  type EmergencyLogEntry,
+  type Nudge,
+  type Trip,
+} from "@/lib/types"
 
 export function isSeedTripId(id: string) {
   return (SEED_TRIP_IDS as readonly string[]).includes(id)
@@ -36,6 +43,23 @@ function dropGone<T extends { id: string }>(rows: T[], gone: string[]) {
   if (!gone.length) return rows
   const hide = new Set(gone)
   return rows.filter((row) => !hide.has(row.id))
+}
+
+function mergeEmergencyLog(local: EmergencyLogEntry[], remote: EmergencyLogEntry[]) {
+  const map = new Map<string, EmergencyLogEntry>()
+  for (const row of [...remote, ...local]) {
+    const existing = map.get(row.id)
+    if (!existing) {
+      map.set(row.id, row)
+      continue
+    }
+    const newer = later(existing, row)
+    map.set(row.id, {
+      ...newer,
+      ...(existing.ack || row.ack ? { ack: true as const } : {}),
+    })
+  }
+  return Array.from(map.values())
 }
 
 export function mergeNudges(local?: Nudge[], remote?: Nudge[]) {
@@ -88,7 +112,7 @@ export function mergeTrip(local: Trip, remote: Trip, dirty: boolean): Trip {
   })
   const deletedExpenseIds = unionIds(local.deletedExpenseIds, remote.deletedExpenseIds)
   const deletedPaymentIds = unionIds(local.deletedPaymentIds, remote.deletedPaymentIds)
-  const emergencyLog = unionById(emergencyLogOf(local), emergencyLogOf(remote))
+  const emergencyLog = mergeEmergencyLog(emergencyLogOf(local), emergencyLogOf(remote))
   const next: Trip = {
     ...(dirty ? local : remote),
     joinCode: (dirty ? local.joinCode : remote.joinCode) || local.joinCode || remote.joinCode,
@@ -137,8 +161,14 @@ export function hasUnsyncedRows(local: Trip, written: Trip) {
     extraIds(local.deletedExpenseIds, written.deletedExpenseIds) ||
     extraIds(local.deletedPaymentIds, written.deletedPaymentIds) ||
     nudgesUnsynced(local.nudges, written.nudges) ||
-    newerOrMissing(emergencyLogOf(local), emergencyLogOf(written))
+    emergencyLogUnsynced(emergencyLogOf(local), emergencyLogOf(written))
   )
+}
+
+function emergencyLogUnsynced(local: EmergencyLogEntry[], written: EmergencyLogEntry[]) {
+  if (newerOrMissing(local, written)) return true
+  const have = new Map(written.map((row) => [row.id, row]))
+  return local.some((row) => !!row.ack !== !!have.get(row.id)?.ack)
 }
 
 export function shouldClearDirty(local: Trip | undefined, written: Trip) {

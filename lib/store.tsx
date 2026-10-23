@@ -29,6 +29,7 @@ import {
 } from "@/lib/supabase"
 import {
   applyNudgeResolution,
+  ackEmergencyLog,
   appendEmergencyLog,
   DAY,
   hasCooldownNudge,
@@ -52,6 +53,7 @@ import {
   sanitizeProfile,
   syncProfileToClaimedMembers,
   uid,
+  unackedCrownPass,
   type AppState,
   type Expense,
   type ExpenseDraft,
@@ -265,9 +267,11 @@ type BarkadaStore = {
   editMember: (id: string, name: string, gcash: string) => ActionResult
   removeMember: (id: string) => ActionResult
   setGcash: (gcash: string) => ActionResult
+  renameTrip: (name: string) => ActionResult
   setOpen: (open: boolean) => ActionResult
   setRoundTo: (roundTo: RoundTo) => ActionResult
   handoff: (id: string) => ActionResult
+  ackCrownPass: () => ActionResult
   emergencyTakeover: (newMemberId: string, reason: string) => ActionResult
   setPersona: (persona: Persona) => void
   setScreenshotMode: (on: boolean) => void
@@ -1036,6 +1040,15 @@ export const useBarkadaStore = create<BarkadaStore>()(
           set({ state: withTrip(state, active.id, (trip) => ({ ...trip, gcash: number })) })
           return { ok: true, message: t(state.lang, "tripGcashSaved") }
         },
+        renameTrip: (name) => {
+          const { state } = get()
+          const trimmed = name.trim().slice(0, 80)
+          if (!trimmed) return { ok: false, message: t(state.lang, "needTripName") }
+          const active = activeTrip(state)
+          if (!active) return { ok: false, message: t(state.lang, "needTripName") }
+          set({ state: withTrip(state, active.id, (trip) => ({ ...trip, name: trimmed })) })
+          return { ok: true, message: t(state.lang, "saved") }
+        },
         setOpen: (open) => {
           const { state } = get()
           const active = activeTrip(state)
@@ -1100,7 +1113,16 @@ export const useBarkadaStore = create<BarkadaStore>()(
               )
             ),
           })
-          return { ok: true, message: incoming.name + " " + t(state.lang, "newTreas") }
+          return { ok: true, message: t(state.lang, "crownPassToast").replace("{name}", incoming.name) }
+        },
+        ackCrownPass: () => {
+          const { state } = get()
+          const active = activeTrip(state)
+          if (!active) return { ok: false, message: t(state.lang, "onlyT") }
+          const entry = unackedCrownPass(active, state.as)
+          if (!entry) return { ok: true, message: "" }
+          set({ state: withTrip(state, active.id, (trip) => ackEmergencyLog(trip, entry.id)) })
+          return { ok: true, message: "" }
         },
         emergencyTakeover: (newMemberId, reason) => {
           const { state } = get()

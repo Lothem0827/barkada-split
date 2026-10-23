@@ -32,12 +32,15 @@ import {
   AVATARS,
   DAY,
   PERSONAS,
+  ackEmergencyLog,
   appendEmergencyLog,
   collectUniqueNicknames,
   emptyState,
   emergencyLogOf,
+  unackedCrownPass,
   findTakenMember,
   findTakenName,
+  gcashOf,
   memberCanRemove,
   memberName,
   nameKey,
@@ -560,6 +563,27 @@ function liveExpense(id: string, addedBy: string, ts: number): Expense {
 }
 
 {
+  const trip: Trip = {
+    id: "t-gc",
+    joinCode: "GCSH-26",
+    name: "GCash",
+    treasurer: "a",
+    gcash: "09170000000",
+    open: true,
+    roundTo: 0,
+    members: [
+      { id: "a", name: "A", gcash: "" },
+      { id: "b", name: "B", gcash: "09171111111" },
+    ],
+    expenses: [],
+    payments: [],
+  }
+  assert.equal(gcashOf(trip, "a"), "")
+  assert.equal(gcashOf(trip, "b"), "09171111111")
+  console.log("ok  gcashOf uses member number only")
+}
+
+{
   assert.equal(nameKey(" Carl "), "carl")
   assert.equal(findTakenName(["Carl", "Bea"], "carl"), "Carl")
   assert.equal(findTakenName(["Carl", "Bea"], "Carlo"), null)
@@ -870,6 +894,50 @@ function liveExpense(id: string, addedBy: string, ts: number): Expense {
     "em1,em2"
   )
   console.log("ok  emergency log sanitize/merge/unsynced")
+}
+
+{
+  const base: Trip = {
+    id: "t-crown",
+    joinCode: "CRWN-26",
+    name: "Crown",
+    treasurer: "mel",
+    gcash: "",
+    open: false,
+    roundTo: 0,
+    members: [
+      { id: "carl", name: "Carl", gcash: "" },
+      { id: "mel", name: "Mel", gcash: "" },
+    ],
+    expenses: [],
+    payments: [],
+    emergencyLog: [
+      {
+        id: "em-crown",
+        action: "crown_passed",
+        actorMemberId: "carl",
+        actorName: "Carl",
+        details: "Passed crown to Mel",
+        ts: 100,
+      },
+    ],
+  }
+  const shown = unackedCrownPass(base, "mel")
+  assert.equal(shown?.id, "em-crown")
+  assert.equal(unackedCrownPass(base, "carl"), null)
+
+  const acked = ackEmergencyLog(base, "em-crown")
+  assert.equal(unackedCrownPass(acked, "mel"), null)
+  assert.equal(acked.emergencyLog?.[0]?.ack, true)
+
+  const round = importTrip(exportTrip(acked))
+  assert.equal(round.emergencyLog?.[0]?.ack, true)
+  assert.equal(hasUnsyncedRows(acked, base), true)
+
+  const merged = mergeTrip(acked, base, true)
+  assert.equal(merged.emergencyLog?.[0]?.ack, true)
+  assert.equal(shouldClearDirty(acked, merged), true)
+  console.log("ok  crown pass ack/banner helpers")
 }
 
 {

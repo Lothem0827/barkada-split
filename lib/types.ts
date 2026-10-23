@@ -125,6 +125,22 @@ export type EmergencyLogEntry = {
   actorName: string
   details: string
   ts: number
+  ack?: boolean
+}
+
+export const ACTIVITY_CATEGORIES = ["gastos", "bayad", "admin"] as const
+export type ActivityCategory = (typeof ACTIVITY_CATEGORIES)[number]
+export const ACTIVITY_LOG_CAP = 100
+
+export type ActivityLogItem = {
+  id: string
+  category: ActivityCategory
+  icon: string
+  actorId?: string
+  actorName: string
+  message: string
+  amount?: number
+  ts: number
 }
 
 export type Trip = {
@@ -132,6 +148,7 @@ export type Trip = {
   joinCode: string
   name: string
   treasurer: string
+  /** leftover for old saved trips; never use as the payee number */
   gcash: string
   open: boolean
   roundTo: RoundTo
@@ -142,6 +159,7 @@ export type Trip = {
   deletedExpenseIds?: string[]
   deletedPaymentIds?: string[]
   emergencyLog?: EmergencyLogEntry[]
+  activityLog?: ActivityLogItem[]
 }
 
 export type Profile = {
@@ -228,8 +246,24 @@ export function isEmergencyAction(value: unknown): value is EmergencyAction {
   return (EMERGENCY_ACTIONS as readonly string[]).includes(String(value))
 }
 
+export function isActivityCategory(value: unknown): value is ActivityCategory {
+  return (ACTIVITY_CATEGORIES as readonly string[]).includes(String(value))
+}
+
 export function emergencyLogOf(trip: Pick<Trip, "emergencyLog">): EmergencyLogEntry[] {
   return trip.emergencyLog ?? []
+}
+
+export function activityLogOf(trip: Pick<Trip, "activityLog">): ActivityLogItem[] {
+  return trip.activityLog ?? []
+}
+
+export function logActivity(trip: Trip, item: ActivityLogItem): Trip {
+  const existing = activityLogOf(trip)
+  if (existing.some((row) => row.id === item.id)) {
+    return existing === trip.activityLog ? trip : { ...trip, activityLog: existing }
+  }
+  return { ...trip, activityLog: [item, ...existing].slice(0, ACTIVITY_LOG_CAP) }
 }
 
 export function appendEmergencyLog(trip: Trip, entry: EmergencyLogEntry): Trip {
@@ -238,6 +272,33 @@ export function appendEmergencyLog(trip: Trip, entry: EmergencyLogEntry): Trip {
     return existing === trip.emergencyLog ? trip : { ...trip, emergencyLog: existing }
   }
   return { ...trip, emergencyLog: [...existing, entry] }
+}
+
+export function latestEmergencyLog(trip: Pick<Trip, "emergencyLog">): EmergencyLogEntry | null {
+  let best: EmergencyLogEntry | null = null
+  for (const row of emergencyLogOf(trip)) {
+    if (!best || row.ts > best.ts) best = row
+  }
+  return best
+}
+
+export function unackedCrownPass(trip: Pick<Trip, "treasurer" | "emergencyLog">, as: string) {
+  if (as !== trip.treasurer) return null
+  const latest = latestEmergencyLog(trip)
+  if (!latest || latest.action !== "crown_passed" || latest.ack || latest.actorMemberId === as) return null
+  return latest
+}
+
+export function ackEmergencyLog(trip: Trip, entryId: string): Trip {
+  const existing = emergencyLogOf(trip)
+  let changed = false
+  const next = existing.map((row) => {
+    if (row.id !== entryId || row.ack) return row
+    changed = true
+    return { ...row, ack: true }
+  })
+  if (!changed) return existing === trip.emergencyLog ? trip : { ...trip, emergencyLog: existing }
+  return { ...trip, emergencyLog: next }
 }
 
 export function higherNudgeStatus(left: NudgeStatus, right: NudgeStatus): NudgeStatus {
@@ -514,7 +575,7 @@ export function memberName(trip: Trip, id: string) {
 }
 
 export function gcashOf(trip: Trip, id: string) {
-  return memberOf(trip, id).gcash || trip.gcash || ""
+  return memberOf(trip, id).gcash || ""
 }
 
 export function isTreasurer(state: AppState, trip: Trip) {

@@ -1,77 +1,53 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
-import { ClipboardIcon, PencilIcon, XIcon } from "lucide-react"
+import { useEffect, useState } from "react"
+import { XIcon } from "lucide-react"
 
-import { Badge } from "@/components/ui/badge"
+import { ArmButton } from "@/components/barkada/arm-button"
 import { Button } from "@/components/ui/button"
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer"
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group"
-import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { toast } from "@/components/ui/toast"
-import { sanitizeGcash } from "@/lib/gcash"
 import { t } from "@/lib/i18n"
-import { inviteUrl } from "@/lib/join-code"
-import { isSeedTripId } from "@/lib/merge-trip"
 import { useBarkada } from "@/lib/store"
-import {
-  emergencyLogOf,
-  initial,
-  isOwnerName,
-  memberCanRemove,
-  type EmergencyAction,
-  type Lang,
-  type RoundTo,
-} from "@/lib/types"
+import { emergencyLogOf, type EmergencyAction, type Lang, type RoundTo } from "@/lib/types"
 
 export function LakadSettingsSheet({
   open,
   onOpenChange,
-  onEditMember,
-  onInvite,
-  onHandoff,
-  onResetLock,
   onDeleteTrip,
-  onCopy,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onEditMember: (id: string) => void
-  onInvite: (memberId?: string) => void
-  onHandoff: (id: string, name: string) => void
-  onResetLock: (id: string, name: string) => void
   onDeleteTrip: () => void
-  onCopy: (text: string, label: string) => boolean | void | Promise<boolean | void>
 }) {
-  const { state, trip, treasurer, addMember, editMember, removeMember, setGcash, setOpen, setRoundTo, emergencyTakeover } =
+  const { state, trip, treasurer, renameTrip, setOpen, setRoundTo, setTab, handoff, emergencyTakeover } =
     useBarkada()
-  const { lang, as, profile } = state
-  const [friendName, setFriendName] = useState("")
-  const [friendGcash, setFriendGcash] = useState("")
-  const [addError, setAddError] = useState("")
-  const [lateComer, setLateComer] = useState(true)
-  const [renameId, setRenameId] = useState("")
-  const [renameValue, setRenameValue] = useState("")
+  const { lang, as } = state
+  const [lakadName, setLakadName] = useState("")
+  const [pendingHandoffId, setPendingHandoffId] = useState("")
   const [takeoverOpen, setTakeoverOpen] = useState(false)
   const [takeoverId, setTakeoverId] = useState("")
   const [takeoverReason, setTakeoverReason] = useState("")
   const [takeoverError, setTakeoverError] = useState("")
-  const gcashRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (open) return
-    setTakeoverOpen(false)
-    setTakeoverReason("")
-    setTakeoverError("")
-  }, [open])
+    if (!open) {
+      setPendingHandoffId("")
+      setTakeoverOpen(false)
+      setTakeoverReason("")
+      setTakeoverError("")
+      return
+    }
+    if (trip) setLakadName(trip.name)
+  }, [open, trip])
 
   if (!trip) return null
   const live = trip
-  const liveInvite = !isSeedTripId(live.id)
   const others = live.members.filter((member) => member.id !== live.treasurer)
+  const pending = others.find((member) => member.id === pendingHandoffId) ?? null
   const treasName = live.members.find((member) => member.id === live.treasurer)?.name || "?"
   const emergencyLog = emergencyLogOf(live)
   const takeoverCandidates = live.members.filter((member) => member.id !== live.treasurer)
@@ -82,37 +58,15 @@ export function LakadSettingsSheet({
     toast.add({ title: message, timeout: 1800 })
   }
 
-  function submitFriend() {
-    const result = addMember(friendName, friendGcash, lateComer && live.expenses.length > 0)
+  function commitName() {
+    if (lakadName.trim() === live.name) return
+    const result = renameTrip(lakadName)
     if (!result.ok) {
-      setAddError(result.message)
-      return
-    }
-    setAddError("")
-    setFriendName("")
-    setFriendGcash("")
-    notify(result.message)
-  }
-
-  function commitRename() {
-    if (!renameId) return
-    const member = live.members.find((item) => item.id === renameId)
-    const result = editMember(renameId, renameValue, member?.gcash || "")
-    if (!result.ok) {
+      setLakadName(live.name)
       notify(result.message)
       return
     }
-    setRenameId("")
     notify(result.message)
-  }
-
-  async function copyInvite() {
-    const url = inviteUrl(live.joinCode)
-    const message = t(lang, "inviteMsg")
-      .replace("{name}", live.name)
-      .replace("{url}", url)
-      .replace("{code}", live.joinCode)
-    await onCopy(message, t(lang, "inviteCopied"))
   }
 
   return (
@@ -136,396 +90,231 @@ export function LakadSettingsSheet({
         </DrawerHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-4 py-3 pb-[max(16px,env(safe-area-inset-bottom))]">
           <section className="flex flex-col gap-3">
-            <h3 className="font-heading text-sm font-semibold">👥 {t(lang, "rosterSection")}</h3>
-            <ItemGroup>
-              {live.members.map((member) => {
-                const claimed = !!member.claimedByUid
-                const mark = isOwnerName(profile, member.name) ? profile.avatar : initial(member.name)
-                return (
-                  <Item key={member.id}>
-                    <ItemContent>
-                      <ItemTitle className="flex-wrap">
-                        <span className="grid size-6 place-items-center rounded-full bg-muted text-xs font-bold">
-                          {mark}
-                        </span>
-                        {renameId === member.id ? (
-                          <Input
-                            autoFocus
-                            className="h-8 max-w-[10rem]"
-                            maxLength={40}
-                            value={renameValue}
-                            aria-label={t(lang, "rename")}
-                            onChange={(event) => setRenameValue(event.target.value)}
-                            onBlur={commitRename}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") {
-                                event.preventDefault()
-                                commitRename()
-                              }
-                              if (event.key === "Escape") setRenameId("")
-                            }}
-                          />
-                        ) : (
-                          member.name
-                        )}
-                        {claimed ? (
-                          <Badge variant="secondary">🟢 {t(lang, "joined")}</Badge>
-                        ) : (
-                          <Badge variant="outline">⏳ {t(lang, "unclaimed")}</Badge>
-                        )}
-                        {member.id === live.treasurer ? <Badge>👑 {t(lang, "treas")}</Badge> : null}
-                        {member.id === as ? <Badge variant="secondary">{t(lang, "you")}</Badge> : null}
-                      </ItemTitle>
-                      <ItemDescription className="font-mono select-all">
-                        {member.gcash || t(lang, "noGcashMember")}
-                      </ItemDescription>
-                    </ItemContent>
-                    <ItemActions>
-                      {!claimed && liveInvite ? (
-                        <Button size="touch" className="min-h-[38px]" onClick={() => onInvite(member.id)}>
-                          {t(lang, "inviteName").replace("{name}", member.name)}
-                        </Button>
-                      ) : treasurer && claimed ? (
-                        <Button
-                          size="touch"
-                          variant="ghost"
-                          className="min-h-[38px]"
-                          onClick={() => onResetLock(member.id, member.name)}
-                        >
-                          {t(lang, "resetLock")}
-                        </Button>
-                      ) : null}
-                      {treasurer || member.id === as ? (
-                        <>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="size-11"
-                            aria-label={t(lang, "rename")}
-                            onClick={() => {
-                              setRenameId(member.id)
-                              setRenameValue(member.name)
-                            }}
-                          >
-                            <PencilIcon />
-                          </Button>
-                          <Button size="touch" variant="outline" onClick={() => onEditMember(member.id)}>
-                            {t(lang, "edit")}
-                          </Button>
-                        </>
-                      ) : null}
-                      {treasurer && memberCanRemove(live, member.id) ? (
-                        <Button
-                          size="touch"
-                          variant="ghost"
-                          className="min-h-[38px] text-muted-foreground"
-                          onClick={() => {
-                            const result = removeMember(member.id)
-                            notify(result.message)
-                          }}
-                        >
-                          🗑️ {t(lang, "removeMember")}
-                        </Button>
-                      ) : null}
-                    </ItemActions>
-                  </Item>
-                )
-              })}
-            </ItemGroup>
-            {treasurer ? (
-              <form
-                className="flex flex-col gap-3"
-                onSubmit={(event) => {
-                  event.preventDefault()
-                  submitFriend()
+            <h3 className="font-heading text-sm font-semibold">🏷️ {t(lang, "tripName")}</h3>
+            <Field>
+              <FieldLabel htmlFor="t-lakad-name">{t(lang, "tripName")}</FieldLabel>
+              <Input
+                id="t-lakad-name"
+                maxLength={80}
+                value={lakadName}
+                onChange={(event) => setLakadName(event.target.value)}
+                onBlur={commitName}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault()
+                    commitName()
+                  }
                 }}
-              >
-                <FieldGroup>
-                  <Field data-invalid={addError ? true : undefined}>
-                    <FieldLabel htmlFor="f-friend-name">{t(lang, "addFriendName")}</FieldLabel>
-                    <Input
-                      id="f-friend-name"
-                      enterKeyHint="next"
-                      autoComplete="off"
-                      maxLength={24}
-                      value={friendName}
-                      aria-invalid={addError ? true : undefined}
-                      aria-describedby={addError ? "f-friend-name-error" : undefined}
-                      onChange={(event) => {
-                        setFriendName(event.target.value)
-                        setAddError("")
-                      }}
-                    />
-                    {addError ? <FieldError id="f-friend-name-error">{addError}</FieldError> : null}
-                  </Field>
-                  {live.expenses.length > 0 ? (
-                    <Field>
-                      <ToggleGroup
-                        variant="outline"
-                        spacing={1}
-                        orientation="vertical"
-                        className="flex w-full flex-col"
-                        value={[lateComer ? "future" : "past"]}
-                        onValueChange={(next) => {
-                          const picked = next[next.length - 1]
-                          if (picked === "future" || picked === "past") setLateComer(picked === "future")
-                        }}
-                      >
-                        <ToggleGroupItem value="future" className="min-h-[40px] w-full justify-start px-3.5 text-left">
-                          {t(lang, "lateComerFuture")}
-                        </ToggleGroupItem>
-                        <ToggleGroupItem value="past" className="min-h-[40px] w-full justify-start px-3.5 text-left">
-                          {t(lang, "lateComerPast")}
-                        </ToggleGroupItem>
-                      </ToggleGroup>
-                    </Field>
-                  ) : null}
-                  <Field>
-                    <FieldLabel htmlFor="f-friend-gcash">{t(lang, "friendGcash")}</FieldLabel>
-                    <Input
-                      id="f-friend-gcash"
-                      type="tel"
-                      inputMode="tel"
-                      enterKeyHint="done"
-                      autoComplete="off"
-                      className="font-mono"
-                      maxLength={16}
-                      value={friendGcash}
-                      placeholder="09XX XXX XXXX"
-                      onChange={(event) => setFriendGcash(sanitizeGcash(event.target.value))}
-                    />
-                  </Field>
-                  <FieldDescription>
-                    {t(lang, lateComer && live.expenses.length > 0 ? "memberAddHintFuture" : "memberAddHint")}
-                  </FieldDescription>
-                </FieldGroup>
-                <Button type="submit" className="min-h-[44px]">
-                  {t(lang, "addToRoster")}
-                </Button>
-              </form>
-            ) : null}
+              />
+            </Field>
+            <button
+              type="button"
+              className="text-left text-sm text-muted-foreground underline-offset-4 hover:underline"
+              onClick={() => {
+                onOpenChange(false)
+                setTab("barkada")
+              }}
+            >
+              {t(lang, "goToRoster")}
+            </button>
           </section>
 
-          {liveInvite ? (
+          {treasurer ? (
             <section className="flex flex-col gap-3">
-              <h3 className="font-heading text-sm font-semibold">📲 {t(lang, "shareSection")}</h3>
-              <div className="flex justify-center">
-                <Badge variant="secondary" className="h-8 px-3 font-mono text-sm tracking-[0.18em]">
-                  {live.joinCode}
-                </Badge>
-              </div>
-              <Button variant="secondary" className="min-h-[44px] w-full" onClick={() => void copyInvite()}>
-                <ClipboardIcon data-icon="inline-start" />
-                {t(lang, "copyInviteGc")}
-              </Button>
+              <h3 className="font-heading text-sm font-semibold">🔒 {t(lang, "approvalSection")}</h3>
+              <ToggleGroup
+                variant="outline"
+                spacing={1}
+                orientation="vertical"
+                className="flex w-full flex-col"
+                value={[live.open ? "open" : "locked"]}
+                onValueChange={(next) => {
+                  const picked = next[next.length - 1]
+                  if (picked === "open" || picked === "locked") {
+                    const result = setOpen(picked === "open")
+                    notify(result.message)
+                  }
+                }}
+              >
+                <ToggleGroupItem value="open" className="min-h-[44px] w-full justify-start px-3.5 text-left">
+                  🔓 {t(lang, "openModePill")}
+                </ToggleGroupItem>
+                <ToggleGroupItem value="locked" className="min-h-[44px] w-full justify-start px-3.5 text-left">
+                  🔒 {t(lang, "treasApprovalMode")}
+                </ToggleGroupItem>
+              </ToggleGroup>
             </section>
           ) : null}
 
           {treasurer ? (
             <section className="flex flex-col gap-3">
-              <h3 className="font-heading text-sm font-semibold">🔒 {t(lang, "rulesSection")}</h3>
-              <FieldGroup>
-                <Field>
-                  <FieldLabel>{t(lang, "openMode")}</FieldLabel>
-                  <ToggleGroup
-                    variant="outline"
-                    spacing={1}
-                    className="flex w-full flex-wrap"
-                    value={[live.open ? "open" : "locked"]}
-                    onValueChange={(next) => {
-                      const picked = next[next.length - 1]
-                      if (picked === "open" || picked === "locked") {
-                        const result = setOpen(picked === "open")
-                        notify(result.message)
-                      }
-                    }}
-                  >
-                    <ToggleGroupItem value="open" className="min-h-[40px] flex-1 px-3.5">
-                      🔓 {t(lang, "openModePill")}
-                    </ToggleGroupItem>
-                    <ToggleGroupItem value="locked" className="min-h-[40px] flex-1 px-3.5">
-                      🔒 {t(lang, "treasApprovalMode")}
-                    </ToggleGroupItem>
-                  </ToggleGroup>
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="t-gcash">{t(lang, "gnum")}</FieldLabel>
-                  <InputGroup className="h-11">
-                    <InputGroupInput
-                      key={live.id + live.gcash}
-                      ref={gcashRef}
-                      id="t-gcash"
-                      type="tel"
-                      className="font-mono"
-                      inputMode="tel"
-                      enterKeyHint="done"
-                      autoComplete="off"
-                      maxLength={16}
-                      defaultValue={live.gcash}
-                      placeholder="09XX XXX XXXX"
-                      onInput={(event) => {
-                        event.currentTarget.value = sanitizeGcash(event.currentTarget.value)
-                      }}
-                    />
-                    <InputGroupAddon align="inline-end">
-                      <InputGroupButton
-                        className="min-h-[44px] min-w-[44px] px-3.5"
-                        onClick={() => {
-                          const result = setGcash(gcashRef.current?.value ?? "")
-                          notify(result.message)
-                        }}
-                      >
-                        {t(lang, "save")}
-                      </InputGroupButton>
-                    </InputGroupAddon>
-                  </InputGroup>
-                  <FieldDescription>{t(lang, "gnumHint")}</FieldDescription>
-                </Field>
-                <Field>
-                  <FieldLabel>{t(lang, "barya")}</FieldLabel>
-                  <ToggleGroup
-                    variant="outline"
-                    spacing={1}
-                    className="flex-wrap"
-                    value={[String(live.roundTo || 0)]}
-                    onValueChange={(next) => {
-                      const picked = next[next.length - 1]
-                      if (picked === "0" || picked === "100" || picked === "500") {
-                        const result = setRoundTo(Number(picked) as RoundTo)
-                        notify(result.message)
-                      }
-                    }}
-                  >
-                    <ToggleGroupItem value="0" className="min-h-[40px] px-3.5">
-                      {t(lang, "round0")}
-                    </ToggleGroupItem>
-                    <ToggleGroupItem value="100" className="min-h-[40px] px-3.5">
-                      {t(lang, "round1")}
-                    </ToggleGroupItem>
-                    <ToggleGroupItem value="500" className="min-h-[40px] px-3.5">
-                      {t(lang, "round5")}
-                    </ToggleGroupItem>
-                  </ToggleGroup>
-                </Field>
-                {others.length ? (
-                  <Field>
-                    <FieldLabel>{t(lang, "handoff")}</FieldLabel>
-                    <div className="flex flex-wrap gap-2">
-                      {others.map((member) => (
-                        <Button
-                          key={member.id}
-                          size="touch"
-                          variant="outline"
-                          onClick={() => onHandoff(member.id, member.name)}
-                        >
-                          👑 {member.name}
-                        </Button>
-                      ))}
-                    </div>
-                  </Field>
-                ) : null}
-              </FieldGroup>
-              <Button className="min-h-[40px] w-full" variant="destructive" onClick={onDeleteTrip}>
-                {t(lang, "delTrip")}
-              </Button>
-            </section>
-          ) : (
-            <section className="flex flex-col gap-2 rounded-xl border bg-card p-3">
-              <h3 className="font-heading text-sm font-semibold">
-                {t(lang, "treasIs")}: {live.members.find((member) => member.id === live.treasurer)?.name}
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                {t(lang, "treasInfo")}
-                {live.gcash ? (
-                  <>
-                    : <span className="font-mono select-all">{live.gcash}</span>
-                  </>
-                ) : null}
-              </p>
-              <p className="text-sm text-muted-foreground">{live.open ? t(lang, "openOn") : t(lang, "openOff")}</p>
-            </section>
-          )}
-
-          {!treasurer && takeoverCandidates.length ? (
-            <section className="flex flex-col gap-2">
-              <button
-                type="button"
-                className="text-left text-xs font-semibold text-destructive"
-                onClick={() => {
-                  setTakeoverOpen((next) => !next)
-                  setTakeoverError("")
-                  if (!takeoverId) {
-                    setTakeoverId(takeoverCandidates.some((member) => member.id === as) ? as : takeoverCandidates[0].id)
+              <h3 className="font-heading text-sm font-semibold">🪙 {t(lang, "barya")}</h3>
+              <ToggleGroup
+                variant="outline"
+                spacing={1}
+                className="flex-wrap"
+                value={[String(live.roundTo || 0)]}
+                onValueChange={(next) => {
+                  const picked = next[next.length - 1]
+                  if (picked === "0" || picked === "100" || picked === "500") {
+                    const result = setRoundTo(Number(picked) as RoundTo)
+                    notify(result.message)
                   }
                 }}
               >
-                {t(lang, "emergencyTakeoverBtn")}
-              </button>
-              {takeoverOpen ? (
-                <div className="flex flex-col gap-3 rounded-xl border border-destructive/30 bg-card p-3">
-                  <p className="text-sm text-muted-foreground">
-                    {t(lang, "emergencyTakeoverWarn").replace("{name}", treasName)}
-                  </p>
-                  <FieldGroup>
-                    <Field>
-                      <FieldLabel htmlFor="f-takeover-who">{t(lang, "emergencyTakeoverWho")}</FieldLabel>
-                      <select
-                        id="f-takeover-who"
-                        className="h-11 w-full rounded-lg border border-input bg-transparent px-2.5 text-base"
-                        value={selectedTakeover}
-                        onChange={(event) => {
-                          setTakeoverId(event.target.value)
-                          setTakeoverError("")
-                        }}
-                      >
-                        {takeoverCandidates.map((member) => (
-                          <option key={member.id} value={member.id}>
-                            {member.name}
-                            {member.id === as ? ` (${t(lang, "you")})` : ""}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
-                    <Field data-invalid={takeoverError ? true : undefined}>
-                      <FieldLabel htmlFor="f-takeover-reason">{t(lang, "emergencyTakeoverReason")}</FieldLabel>
-                      <Input
-                        id="f-takeover-reason"
-                        autoComplete="off"
-                        maxLength={180}
-                        value={takeoverReason}
-                        placeholder={t(lang, "emergencyTakeoverReasonPh")}
-                        aria-invalid={takeoverError ? true : undefined}
-                        aria-describedby={takeoverError ? "f-takeover-reason-error" : undefined}
-                        onChange={(event) => {
-                          setTakeoverReason(event.target.value)
-                          setTakeoverError("")
-                        }}
-                      />
-                      {takeoverError ? <FieldError id="f-takeover-reason-error">{takeoverError}</FieldError> : null}
-                    </Field>
-                  </FieldGroup>
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    className="btn-danger min-h-[48px] w-full"
-                    onClick={() => {
-                      const result = emergencyTakeover(selectedTakeover, takeoverReason)
-                      if (!result.ok) {
-                        setTakeoverError(result.message)
-                        return
-                      }
-                      setTakeoverOpen(false)
-                      setTakeoverReason("")
-                      setTakeoverError("")
-                      toast.add({ title: result.message, timeout: 3200 })
-                    }}
-                  >
-                    {t(lang, "emergencyTakeoverConfirm")}
-                  </Button>
-                </div>
-              ) : null}
+                <ToggleGroupItem value="0" className="min-h-[40px] px-3.5">
+                  {t(lang, "round0")}
+                </ToggleGroupItem>
+                <ToggleGroupItem value="100" className="min-h-[40px] px-3.5">
+                  {t(lang, "round1")}
+                </ToggleGroupItem>
+                <ToggleGroupItem value="500" className="min-h-[40px] px-3.5">
+                  {t(lang, "round5")}
+                </ToggleGroupItem>
+              </ToggleGroup>
+              <p className="text-sm text-muted-foreground">{t(lang, "butalRoundHint")}</p>
             </section>
           ) : null}
+
+          <section className="flex flex-col gap-3">
+            <h3 className="font-heading text-sm font-semibold">👑 {t(lang, "dangerSection")}</h3>
+            {treasurer && others.length ? (
+              <Field>
+                <FieldLabel>👑 {t(lang, "handoff")}</FieldLabel>
+                <div className="flex flex-wrap gap-2">
+                  {others.map((member) => (
+                    <Button
+                      key={member.id}
+                      size="touch"
+                      variant={pendingHandoffId === member.id ? "default" : "outline"}
+                      aria-pressed={pendingHandoffId === member.id}
+                      onClick={() =>
+                        setPendingHandoffId((current) => (current === member.id ? "" : member.id))
+                      }
+                    >
+                      👑 {member.name}
+                    </Button>
+                  ))}
+                </div>
+                {pending ? (
+                  <div className="mt-2 rounded-xl border bg-card p-3">
+                    <p className="text-sm">{t(lang, "crownPassAsk").replace("{name}", pending.name)}</p>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <Button
+                        className="btn-primary min-h-[44px]"
+                        onClick={() => {
+                          const result = handoff(pending.id)
+                          if (result.ok) setPendingHandoffId("")
+                          notify(result.message)
+                        }}
+                      >
+                        {t(lang, "crownPassConfirm").replace("{name}", pending.name)}
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        className="btn-soft min-h-[44px]"
+                        onClick={() => setPendingHandoffId("")}
+                      >
+                        {t(lang, "cancel")}
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </Field>
+            ) : null}
+
+            {!treasurer && takeoverCandidates.length ? (
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  className="text-left text-xs font-semibold text-destructive"
+                  onClick={() => {
+                    setTakeoverOpen((next) => !next)
+                    setTakeoverError("")
+                    if (!takeoverId) {
+                      setTakeoverId(takeoverCandidates.some((member) => member.id === as) ? as : takeoverCandidates[0].id)
+                    }
+                  }}
+                >
+                  {t(lang, "emergencyTakeoverBtn")}
+                </button>
+                {takeoverOpen ? (
+                  <div className="flex flex-col gap-3 rounded-xl border border-destructive/30 bg-card p-3">
+                    <p className="text-sm text-muted-foreground">
+                      {t(lang, "emergencyTakeoverWarn").replace("{name}", treasName)}
+                    </p>
+                    <FieldGroup>
+                      <Field>
+                        <FieldLabel htmlFor="f-takeover-who">{t(lang, "emergencyTakeoverWho")}</FieldLabel>
+                        <select
+                          id="f-takeover-who"
+                          className="h-11 w-full rounded-lg border border-input bg-transparent px-2.5 text-base"
+                          value={selectedTakeover}
+                          onChange={(event) => {
+                            setTakeoverId(event.target.value)
+                            setTakeoverError("")
+                          }}
+                        >
+                          {takeoverCandidates.map((member) => (
+                            <option key={member.id} value={member.id}>
+                              {member.name}
+                              {member.id === as ? ` (${t(lang, "you")})` : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field data-invalid={takeoverError ? true : undefined}>
+                        <FieldLabel htmlFor="f-takeover-reason">{t(lang, "emergencyTakeoverReason")}</FieldLabel>
+                        <Input
+                          id="f-takeover-reason"
+                          autoComplete="off"
+                          maxLength={180}
+                          value={takeoverReason}
+                          placeholder={t(lang, "emergencyTakeoverReasonPh")}
+                          aria-invalid={takeoverError ? true : undefined}
+                          aria-describedby={takeoverError ? "f-takeover-reason-error" : undefined}
+                          onChange={(event) => {
+                            setTakeoverReason(event.target.value)
+                            setTakeoverError("")
+                          }}
+                        />
+                        {takeoverError ? <FieldError id="f-takeover-reason-error">{takeoverError}</FieldError> : null}
+                      </Field>
+                    </FieldGroup>
+                    <ArmButton
+                      variant="destructive"
+                      className="btn-danger min-h-[48px] w-full"
+                      label={t(lang, "emergencyTakeoverConfirm")}
+                      armedLabel={t(lang, "sure")}
+                      cancelLabel={t(lang, "cancel")}
+                      onConfirm={() => {
+                        const result = emergencyTakeover(selectedTakeover, takeoverReason)
+                        if (!result.ok) {
+                          setTakeoverError(result.message)
+                          return
+                        }
+                        setTakeoverOpen(false)
+                        setTakeoverReason("")
+                        setTakeoverError("")
+                        toast.add({ title: result.message, timeout: 3200 })
+                      }}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {treasurer ? (
+              <ArmButton
+                variant="destructive"
+                className="w-full"
+                label={"🗑️ " + t(lang, "delTrip")}
+                armedLabel={t(lang, "sureDelForever")}
+                cancelLabel={t(lang, "cancel")}
+                onConfirm={onDeleteTrip}
+              />
+            ) : null}
+          </section>
 
           {emergencyLog.length ? (
             <details className="rounded-xl border bg-card p-3">

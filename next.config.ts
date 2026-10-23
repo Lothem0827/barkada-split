@@ -4,6 +4,7 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1"],
   experimental: {
     agentUpgrade: "security",
+  },
   async headers() {
     return [
       {
