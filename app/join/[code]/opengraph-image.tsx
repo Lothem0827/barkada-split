@@ -33,8 +33,8 @@ export default async function JoinOpenGraphImage({ params }: { params: Promise<{
             background: "linear-gradient(160deg, #1a6b4a 0%, #0f3d2e 100%)",
           }}
         >
-          <div style={{ fontSize: 36, letterSpacing: 6 }}>BARKADA SPLIT TICKET</div>
-          <div style={{ fontSize: 64, fontWeight: 700, lineHeight: 1.1 }}>Join our lakad</div>
+          <div style={{ fontSize: 36, letterSpacing: 6 }}>TALLY TICKET</div>
+          <div style={{ fontSize: 64, fontWeight: 700, lineHeight: 1.1 }}>Join our trip</div>
           <div style={{ fontSize: 48, fontFamily: "monospace", letterSpacing: 8 }}>{joinCode}</div>
         </div>
       </div>

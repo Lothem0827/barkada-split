@@ -26,6 +26,18 @@ import {
   makeFakeNewsNudge,
 } from "../lib/payments.ts"
 import { fakeNewsReminder, reminder, sampleReminder } from "../lib/reminders.ts"
+import {
+  cycleWrappedRoast,
+  getExpenseReaction,
+  getHeroCommentary,
+  getMascotAvatar,
+  getWrappedVerdict,
+  personaMood,
+  signTaliNudge,
+  TALI_NUDGE_SIGNATURE,
+  wrappedRoastSeed,
+} from "../lib/companion-ai.ts"
+import { homeSeat, homeTotals, isActiveTrip, isSettledTrip } from "../lib/home-dashboard.ts"
 import { seed } from "../lib/seed.ts"
 import {
   activityAgo,
@@ -38,6 +50,7 @@ import {
   wrappedShareText,
 } from "../lib/activity.ts"
 import { flushPayload, hasUnsyncedRows, mergeTrip, shouldClearDirty } from "../lib/merge-trip.ts"
+import { memoryPhotosOf } from "../lib/image-utils.ts"
 import { exportTrip, importTrip, sanitizeTrip } from "../lib/snapshot.ts"
 import {
   ACTIVITY_LOG_CAP,
@@ -637,16 +650,16 @@ function liveExpense(id: string, addedBy: string, ts: number): Expense {
   )
   assert.equal(
     takenNicknameMessage("en", "Bea", false),
-    "Bea is already on the roster. Use a different palayaw so we can tell you apart."
+    "Bea is already on the roster. Use a different nickname so we can tell you apart."
   )
   console.log("ok  unique nicknames")
 }
 
 {
-  assert.equal(titleCaseName("carl"), "carl")
-  assert.equal(titleCaseName("  DJ   "), "DJ")
+  assert.equal(titleCaseName("carl"), "Carl")
+  assert.equal(titleCaseName("  DJ   "), "Dj")
   assert.equal(titleCaseName("Jigs 🏄‍♂️"), "Jigs 🏄‍♂️")
-  assert.equal(titleCaseName("<script>Bea"), "scriptBea")
+  assert.equal(titleCaseName("<script>Bea"), "Scriptbea")
   assert.equal(titleCaseName(""), "")
   assert.equal(hasNameSeparator("Carl,"), true)
   assert.equal(hasNameSeparator("Carl"), false)
@@ -690,8 +703,8 @@ function liveExpense(id: string, addedBy: string, ts: number): Expense {
   assert.equal(AVATARS.length, 10)
   assert.ok(AVATARS.includes("🌺") && AVATARS.includes("🦈"))
   assert.equal(sanitizeProfile({ name: "Bea", gcash: "0917", bankNote: "Maya preferred" }).bankNote, "Maya preferred")
-  assert.equal(emptyState().lang, "tl")
-  assert.equal(hydrateState({ lang: "ceb", lakads: [] }).lang, "ceb")
+  assert.equal(emptyState().lang, "en")
+  assert.equal(hydrateState({ lang: "ceb", lakads: [] }).lang, "en")
   assert.equal(t("ceb", "gastos"), "Mga gasto")
   assert.equal(t("ceb", "needTripName"), t("tl", "needTripName"))
 
@@ -1193,11 +1206,242 @@ function liveExpense(id: string, addedBy: string, ts: number): Expense {
     Date.parse("2026-10-23T14:20:00"),
     "https://barkada-split-bywn.vercel.app"
   )
-  assert.ok(resibo.startsWith("📜 RESIBO ALERT (Barkada Split): 👀 Jigs SEEN ZONED"))
+  assert.ok(resibo.startsWith("📜 RECEIPT ALERT (Tally): 👀 Jigs SEEN ZONED"))
   assert.ok(resibo.includes("Today at"))
   assert.ok(resibo.includes("/join/HIKE-26"))
-  assert.ok(wrappedShareText(siargao, Date.now()).includes("LAKAD WRAPPED"))
+  assert.ok(wrappedShareText(siargao, Date.now()).includes("TRIP WRAPPED"))
   console.log("ok  activity log backfill/sanitize/merge")
+}
+
+{
+  function taliTrip(over: Partial<Trip> = {}): Trip {
+    return {
+      id: "t-tali",
+      joinCode: "TALI-00",
+      name: "Elyu",
+      treasurer: "a",
+      gcash: "",
+      open: false,
+      roundTo: 0,
+      members: [
+        { id: "a", name: "Bea", gcash: "" },
+        { id: "b", name: "Jigs", gcash: "" },
+      ],
+      expenses: [],
+      payments: [],
+      ...over,
+    }
+  }
+  function bill(over: Partial<Expense> = {}): Expense {
+    return {
+      id: "e1",
+      title: "Unli",
+      amount: 100000,
+      sc: false,
+      payer: "a",
+      method: "even",
+      ex: [],
+      items: [],
+      addedBy: "a",
+      status: "approved",
+      ts: 0,
+      ...over,
+    }
+  }
+
+  assert.equal(getMascotAvatar("chill"), "🦦🕶️")
+  assert.equal(getMascotAvatar("detective"), "🦦🔍")
+  assert.equal(personaMood("conyo"), "conyo")
+  assert.equal(personaMood("tita"), "tita")
+  assert.equal(personaMood("guilttrip"), "tampo")
+  assert.equal(personaMood("corporate"), "detective")
+  assert.ok(signTaliNudge("Hoy bayad na").endsWith(TALI_NUDGE_SIGNATURE))
+
+  const pending = taliTrip({
+    expenses: [
+      bill({ id: "p1", status: "pending" }),
+      bill({
+        id: "p2",
+        status: "approved",
+        pendingEdit: {
+          title: "Unli",
+          amount: 120000,
+          sc: false,
+          payer: "a",
+          method: "even",
+          ex: [],
+          items: [],
+          editedBy: "b",
+          ts: 1,
+        },
+      }),
+    ],
+  })
+  const treas = getHeroCommentary(pending, "a", "gastos", 0)
+  assert.equal(treas.mood, "detective")
+  assert.match(treas.lines[0], /may 2 pending gastos/)
+
+  const seen = taliTrip({
+    expenses: [bill()],
+    nudges: [
+      {
+        id: "n1",
+        from: "a",
+        to: "b",
+        amount: 50000,
+        persona: "conyo",
+        message: "bayad",
+        ts: 4,
+        read: true,
+        status: "seen_zoned",
+      },
+    ],
+  })
+  const zoned = getHeroCommentary(seen, "a", "hatian", 0)
+  assert.equal(zoned.mood, "tampo")
+  assert.match(zoned.lines[0], /Na-SEEN ZONE ni Jigs/)
+
+  const owing = taliTrip({ expenses: [bill({ ts: 0 })] })
+  const tita = getHeroCommentary(owing, "b", "hatian", 3 * DAY)
+  assert.equal(tita.mood, "tita")
+  assert.match(tita.lines[0], /Huy Jigs, 3 days na/)
+  assert.ok(tita.lines[0].includes(peso(50000)))
+  assert.ok(tita.lines[0].includes("Bea"))
+
+  const chill = getHeroCommentary(taliTrip({ expenses: [bill()] }), "a", "gastos", 0)
+  assert.equal(chill.mood, "chill")
+  assert.match(chill.lines[0], /Grabe si Bea/)
+  assert.ok(chill.lines[0].includes(peso(100000)))
+
+  const settled = taliTrip({
+    expenses: [bill({ amount: 10000 })],
+    payments: [{ id: "pay1", from: "b", to: "a", amount: 5000, status: "confirmed", ts: 2, daysLate: 0 }],
+  })
+  const fiesta = getHeroCommentary(settled, "a", "gastos", 2)
+  assert.equal(fiesta.mood, "fiesta")
+  assert.match(fiesta.lines[0], /Quits na lahat/)
+
+  const empty = getHeroCommentary(taliTrip(), "a", "gastos", 0)
+  assert.equal(empty.mood, "chill")
+  assert.ok(!empty.lines[0].includes("Quits na lahat"))
+
+  const rich = getExpenseReaction({
+    amount: 500000,
+    method: "even",
+    excludedNames: [],
+    head: 250000,
+    payingCount: 2,
+  })
+  assert.ok(rich)
+  assert.match(rich.message, /pang-rich kid/)
+  const libre = getExpenseReaction({
+    amount: 20000,
+    method: "libre",
+    excludedNames: ["Bea"],
+    head: 20000,
+    payingCount: 1,
+  })
+  assert.ok(libre)
+  assert.match(libre.message, /manlilibre si Bea/)
+  const pwera = getExpenseReaction({
+    amount: 30000,
+    method: "exclude",
+    excludedNames: ["Jigs"],
+    head: 15000,
+    payingCount: 2,
+  })
+  assert.ok(pwera)
+  assert.match(pwera.message, /Pwera si Jigs/)
+  assert.equal(
+    getExpenseReaction({ amount: 0, method: "libre", excludedNames: ["Bea"], head: 0, payingCount: 0 }),
+    null
+  )
+
+  const roast = getWrappedVerdict(taliTrip({ expenses: [bill()] }), 0, 0)
+  assert.equal(roast.includes("{"), false)
+  assert.ok(roast.split(". ").length >= 2)
+  const nextSeed = cycleWrappedRoast("t-tali")
+  assert.equal(nextSeed, 1)
+  assert.equal(wrappedRoastSeed("t-tali"), 1)
+  assert.ok(wrappedShareText(taliTrip({ expenses: [bill()] }), 0).includes("🐾 TALLY:"))
+  console.log("ok  tali companion commentary")
+}
+
+{
+  const lakads = seed().lakads
+  const ids = { authUid: "", profileName: "Migs" }
+  const seat = homeSeat(lakads[0], ids)
+  assert.equal(seat?.id, "mg")
+  let owed = 0
+  let owe = 0
+  for (const trip of lakads) {
+    const mine = homeSeat(trip, ids)
+    if (!mine) continue
+    const net = balances(trip)[mine.id] || 0
+    if (net > 0) owed += net
+    else if (net < 0) owe += -net
+  }
+  const totals = homeTotals(lakads, ids)
+  assert.equal(totals.totalOwedToMe, owed)
+  assert.equal(totals.totalIOwe, owe)
+  assert.equal(totals.overallNet, owed - owe)
+  assert.ok(lakads.every((trip) => isActiveTrip(trip) !== isSettledTrip(trip)))
+  assert.deepEqual(homeTotals(lakads, { authUid: "", profileName: "" }), {
+    totalOwedToMe: 0,
+    totalIOwe: 0,
+    overallNet: 0,
+  })
+  console.log("ok  home dashboard totals")
+}
+
+{
+  const photoTrip: Trip = {
+    ...empty,
+    coverPhotoUrl: "https://example.com/c.jpg",
+    wrappedPhotos: ["https://example.com/w.jpg"],
+    expenses: [
+      {
+        id: "e1",
+        title: "KBBQ",
+        amount: 420000,
+        sc: false,
+        payer: "a",
+        method: "even",
+        ex: [],
+        items: [],
+        addedBy: "a",
+        status: "approved",
+        ts: 1,
+        photoUrl: "data:image/jpeg;base64,abc",
+        photoType: "memory",
+      },
+      {
+        id: "e2",
+        title: "Resibo",
+        amount: 100,
+        sc: false,
+        payer: "a",
+        method: "even",
+        ex: [],
+        items: [],
+        addedBy: "a",
+        status: "approved",
+        ts: 2,
+        photoUrl: "data:image/jpeg;base64,def",
+        photoType: "receipt",
+      },
+    ],
+  }
+  const clean = sanitizeTrip(photoTrip)
+  assert.equal(clean.coverPhotoUrl, "https://example.com/c.jpg")
+  assert.equal(clean.expenses[0]?.photoUrl, "data:image/jpeg;base64,abc")
+  assert.equal(memoryPhotosOf(clean).length, 3)
+  const back = importTrip(exportTrip(clean))
+  assert.equal(back.coverPhotoUrl, "https://example.com/c.jpg")
+  assert.equal(back.expenses[0]?.photoUrl, undefined)
+  assert.equal(back.expenses[1]?.photoUrl, undefined)
+  assert.equal(sanitizeTrip({ ...empty, coverPhotoUrl: "javascript:alert(1)" }).coverPhotoUrl, undefined)
+  console.log("ok  memory photos persist and export strips data URLs")
 }
 
 console.log("\nAll checks passed.")

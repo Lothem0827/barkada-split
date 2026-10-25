@@ -9,12 +9,12 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { code } = await params
   const joinCode = decodeURIComponent(code)
-  const title = `🏝️ Join our Lakad on Barkada Split! (Code: ${joinCode})`
-  const description = "Walang kalimutan ng ambagan! Tap to claim your name, log gastos, and settle up via GCash."
+  const title = `🏝️ Join our trip on Tally! (Code: ${joinCode})`
+  const description = "Don't forget who owes what. Tap to claim your name, log expenses, and settle up via GCash."
   return {
     title,
     description,
-    openGraph: { title, description, siteName: "Barkada Split", type: "website" },
+    openGraph: { title, description, siteName: "Tally", type: "website" },
     twitter: { card: "summary_large_image", title, description },
   }
 }

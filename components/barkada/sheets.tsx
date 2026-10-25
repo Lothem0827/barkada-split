@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { PlusIcon, XIcon } from "lucide-react"
 
@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/drawer"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { estCalc, peso } from "@/lib/calc"
@@ -27,7 +28,7 @@ import { sanitizeGcash } from "@/lib/gcash"
 import { toast } from "@/components/ui/toast"
 import { t } from "@/lib/i18n"
 import { markJustCreated, parseJoinCodeFromInput } from "@/lib/join-code"
-import { recentBarkadaNames } from "@/lib/member-names"
+import { recentBarkadaNames, splitNameDraft } from "@/lib/member-names"
 import { estMessage } from "@/lib/reminders"
 import { useBarkada } from "@/lib/store"
 import type { EstDraft } from "@/lib/types"
@@ -75,7 +76,7 @@ export function TripSheet({
       swipeDirection="down"
       showSwipeHandle
     >
-      <DrawerContent className="mx-auto max-w-[560px]">
+      <DrawerContent className="mx-auto">
         <DrawerHeader>
           <DrawerTitle>{t(lang, "newTrip")}</DrawerTitle>
         </DrawerHeader>
@@ -186,27 +187,82 @@ export function MemberSheet({
   memberId: string | null
   onOpenChange: (open: boolean) => void
 }) {
-  const { state, trip, addMember, editMember } = useBarkada()
-  const { lang } = state
-  const existing = trip && memberId ? trip.members.find((member) => member.id === memberId) : null
-  const [name, setName] = useState(existing?.name ?? "")
-  const [gcash, setGcash] = useState(existing?.gcash ?? "")
+  const { state, trip, addMember, editMember, saveProfile } = useBarkada()
+  const { lang, as, profile, persona } = state
+  const [name, setName] = useState("")
+  const [gcash, setGcash] = useState("")
   const [error, setError] = useState("")
+  const [lateComer, setLateComer] = useState(true)
+  const hasGastos = !!trip && trip.expenses.length > 0
+
+  useEffect(() => {
+    if (!open) return
+    const member = trip && memberId ? trip.members.find((item) => item.id === memberId) : null
+    setName(member?.name ?? "")
+    setGcash(member?.gcash ?? "")
+    setError("")
+    setLateComer(true)
+  }, [open, memberId])
+
+  function submit() {
+    if (memberId) {
+      const result = editMember(memberId, name, gcash)
+      if (!result.ok) {
+        setError(result.message)
+        return
+      }
+      if (memberId === as) saveProfile({ ...profile, persona, gcash: sanitizeGcash(gcash) })
+      toast.add({ title: result.message, timeout: 1800 })
+      onOpenChange(false)
+      return
+    }
+    const names = splitNameDraft(name, true).complete
+    if (!names.length) {
+      setError(t(lang, "needMemberName"))
+      return
+    }
+    const late = lateComer && hasGastos
+    const skipped: string[] = []
+    let added = 0
+    let lastError = ""
+    for (const item of names) {
+      const result = addMember(item, gcash, late)
+      if (result.ok) added += 1
+      else {
+        skipped.push(item)
+        lastError = result.message
+      }
+    }
+    if (!added) {
+      setError(lastError || t(lang, "needMemberName"))
+      return
+    }
+    toast.add({
+      title: skipped.length
+        ? t(lang, "rosterAdded").replace("{n}", String(added)).replace("{skipped}", skipped.join(", "))
+        : added === 1
+          ? t(lang, "addedToBarkada").replace("{name}", names[0])
+          : t(lang, "rosterAddedClean").replace("{n}", String(added)),
+      timeout: 1800,
+    })
+    onOpenChange(false)
+  }
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} swipeDirection="down" showSwipeHandle>
-      <DrawerContent className="mx-auto max-w-[560px]">
+      <DrawerContent className="mx-auto">
         <DrawerHeader>
           <DrawerTitle>{memberId ? t(lang, "edit") : t(lang, "addMember")}</DrawerTitle>
         </DrawerHeader>
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-3">
           <FieldGroup>
             <Field data-invalid={error ? true : undefined}>
-              <FieldLabel htmlFor="f-mn">{t(lang, "memberName")}</FieldLabel>
+              <FieldLabel htmlFor="f-mn">{t(lang, "addFriendName")}</FieldLabel>
               <Input
                 id="f-mn"
                 enterKeyHint="next"
-                maxLength={24}
+                autoComplete="off"
+                maxLength={memberId ? 24 : 80}
                 value={name}
                 aria-invalid={error ? true : undefined}
                 aria-describedby={error ? "f-mn-error" : undefined}
@@ -218,12 +274,13 @@ export function MemberSheet({
               {error ? <FieldError id="f-mn-error">{error}</FieldError> : null}
             </Field>
             <Field>
-              <FieldLabel htmlFor="f-mg">{t(lang, "memberGcash")}</FieldLabel>
+              <FieldLabel htmlFor="f-mg">{t(lang, "friendGcash")}</FieldLabel>
               <Input
                 id="f-mg"
                 type="tel"
                 inputMode="tel"
                 enterKeyHint="done"
+                autoComplete="off"
                 className="font-mono"
                 maxLength={16}
                 value={gcash}
@@ -231,23 +288,24 @@ export function MemberSheet({
                 onChange={(event) => setGcash(sanitizeGcash(event.target.value))}
               />
             </Field>
-            {!memberId ? <FieldDescription>{t(lang, "memberAddHint")}</FieldDescription> : null}
+            {!memberId && hasGastos ? (
+              <div className="flex items-center justify-between gap-3 rounded-xl bg-muted px-3 py-3">
+                <div className="min-w-0">
+                  <p className="font-medium">
+                    {lateComer ? t(lang, "lateComerFuture") : t(lang, "lateComerPast")}
+                  </p>
+                  {lateComer ? (
+                    <p className="text-sm text-muted-foreground">{t(lang, "memberAddHintFuture")}</p>
+                  ) : null}
+                </div>
+                <Switch checked={lateComer} onCheckedChange={setLateComer} />
+              </div>
+            ) : null}
           </FieldGroup>
         </div>
         <DrawerFooter>
-          <Button
-            size="cta"
-            onClick={() => {
-              const result = memberId ? editMember(memberId, name, gcash) : addMember(name, gcash)
-              if (!result.ok) {
-                setError(result.message)
-                return
-              }
-              toast.add({ title: result.message, timeout: 1800 })
-              onOpenChange(false)
-            }}
-          >
-            {memberId ? t(lang, "save") : t(lang, "addMember")}
+          <Button size="cta" onClick={submit}>
+            {memberId ? t(lang, "save") : t(lang, "addToRoster")}
           </Button>
         </DrawerFooter>
       </DrawerContent>
@@ -280,7 +338,7 @@ export function JoinSheet({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} swipeDirection="down" showSwipeHandle>
-      <DrawerContent className="mx-auto max-w-[560px]">
+      <DrawerContent className="mx-auto">
         <DrawerHeader>
           <DrawerTitle>{t(lang, "joinViaCode")}</DrawerTitle>
           <DrawerDescription>{t(lang, "obJoinCodeHint")}</DrawerDescription>
@@ -336,7 +394,7 @@ export function CopySheet({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} swipeDirection="down" showSwipeHandle>
-      <DrawerContent className="mx-auto max-w-[560px]">
+      <DrawerContent className="mx-auto">
         <DrawerHeader>
           <DrawerTitle>{t(lang, "copyManual")}</DrawerTitle>
           <DrawerDescription>{t(lang, "copyManualHint")}</DrawerDescription>
@@ -387,7 +445,7 @@ export function EstimatorSheet({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} swipeDirection="down" showSwipeHandle>
-      <DrawerContent className="mx-auto max-w-[560px]">
+      <DrawerContent className="mx-auto">
         <DrawerHeader>
           <DrawerTitle>{t(lang, "estimator")}</DrawerTitle>
           <DrawerDescription>{t(lang, "estHint")}</DrawerDescription>
@@ -527,7 +585,7 @@ export function EstimatorSheet({
             copiedLabel={t(lang, "copyDone")}
             onCopy={() =>
               onCopy(
-                estMessage(draft, calc, trip?.name || (lang === "tl" ? "lakad natin" : "our trip"), trip?.gcash || "", lang),
+                estMessage(draft, calc, trip?.name || "our trip", trip?.gcash || "", "tl"),
                 t(lang, "ambagCopied")
               )
             }

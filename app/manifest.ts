@@ -2,9 +2,9 @@ import type { MetadataRoute } from "next"
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Barkada Split",
-    short_name: "Barkada",
-    description: "Split group trip expenses with your barkada. No real payments.",
+    name: "Tally — Bill Splitter",
+    short_name: "Tally",
+    description: "Split group trip expenses with friends. No real payments.",
     start_url: "/",
     scope: "/",
     display: "standalone",

@@ -27,6 +27,7 @@ import { bindSeat, excludeFromPastBills, matchesGcashLast4, resetMemberLock, sea
 import { hydrateState } from "@/lib/hydrate"
 import { t, takenNicknameMessage } from "@/lib/i18n"
 import { makeJoinCode } from "@/lib/join-code"
+import { titleCaseName } from "@/lib/member-names"
 import { isSeedTripId, mergeTrip, omitExpense, shouldClearDirty } from "@/lib/merge-trip"
 import {
   applyUndoPayment,
@@ -143,6 +144,16 @@ function markDirty(state: AppState, tripId: string): AppState {
   return { ...state, dirtyIds: [...state.dirtyIds, tripId] }
 }
 
+function applyPhoto<T extends Expense>(row: T, draft: ExpenseDraft): T {
+  if (draft.photoUrl) {
+    return { ...row, photoUrl: draft.photoUrl, photoType: draft.photoType === "receipt" ? "receipt" : "memory" }
+  }
+  const next = { ...row }
+  delete next.photoUrl
+  delete next.photoType
+  return next
+}
+
 function withAudit(expense: Expense, ts: number, by: string, auditNote: string, historyNote?: string) {
   const note = (historyNote || auditNote).slice(0, 140)
   return {
@@ -251,7 +262,7 @@ type BarkadaStore = {
   applyRemoteTrip: (trip: Trip, clearDirty: boolean) => void
   setTab: (tab: Tab) => void
   goHome: () => void
-  openTrip: (id: string) => void
+  openTrip: (id: string, tab?: Tab) => void
   toggleLang: () => void
   setLang: (lang: Lang) => void
   setAs: (id: string) => ActionResult
@@ -290,6 +301,7 @@ type BarkadaStore = {
   removeMember: (id: string) => ActionResult
   setGcash: (gcash: string) => ActionResult
   renameTrip: (name: string) => ActionResult
+  setTripPhotos: (patch: { coverPhotoUrl?: string | null; wrappedPhotos?: string[] }) => ActionResult
   setOpen: (open: boolean) => ActionResult
   setRoundTo: (roundTo: RoundTo) => ActionResult
   handoff: (id: string) => ActionResult
@@ -335,13 +347,24 @@ export const useBarkadaStore = create<BarkadaStore>()(
           set((store) => ({ state: { ...store.state, tab, screenshotMode: false } }))
           if (typeof window !== "undefined") window.scrollTo(0, 0)
         },
-        goHome: () => set((store) => ({ state: { ...store.state, tab: "home", screenshotMode: false } })),
-        openTrip: (id) =>
+        goHome: () =>
+          set((store) => ({
+            state: { ...store.state, tab: "home", activeId: null, screenshotMode: false },
+          })),
+        openTrip: (id, tab) =>
           set((store) => {
             const found = store.state.lakads.find((item) => item.id === id)
             if (!found) return store
             return {
-              state: ensureViewer({ ...store.state, activeId: id, tab: "gastos", screenshotMode: false }, found),
+              state: ensureViewer(
+                {
+                  ...store.state,
+                  activeId: id,
+                  tab: tab && tab !== "home" ? tab : "gastos",
+                  screenshotMode: false,
+                },
+                found
+              ),
             }
           }),
         toggleLang: () =>
@@ -370,7 +393,7 @@ export const useBarkadaStore = create<BarkadaStore>()(
         createTrip: (name, you, others, gcash) => {
           const { state } = get()
           const tripName = name.trim().slice(0, 60)
-          const youName = you.trim().slice(0, 24)
+          const youName = titleCaseName(you)
           if (!tripName) return { ok: false, message: t(state.lang, "needTripName") }
           if (!youName) return { ok: false, message: t(state.lang, "needYourName") }
           const number = sanitizeGcash(gcash)
@@ -396,7 +419,7 @@ export const useBarkadaStore = create<BarkadaStore>()(
           const { state } = get()
           const tripName = name.trim().slice(0, 60)
           if (!tripName) return { ok: false, message: t(state.lang, "needTripName") }
-          const you = draft.name.trim().slice(0, 24)
+          const you = titleCaseName(draft.name)
           if (!you) return { ok: false, message: t(state.lang, "needYourName") }
           if (!isValidGcash(draft.gcash)) return { ok: false, message: t(state.lang, "badGcash") }
           const parsed = collectUniqueNicknames(you, friends)
@@ -646,13 +669,16 @@ export const useBarkadaStore = create<BarkadaStore>()(
             return { ok: false, message: t(state.lang, "whoPaid") }
           }
           const auto = active.open || isTreasurer(state, active)
-          const expense = {
-            ...parsed.e,
-            id: uid("e"),
-            addedBy: state.as,
-            status: (active.open || state.as === active.treasurer ? "approved" : "pending") as "approved" | "pending",
-            ts: nowTs(state),
-          }
+          const expense = applyPhoto(
+            {
+              ...parsed.e,
+              id: uid("e"),
+              addedBy: state.as,
+              status: (active.open || state.as === active.treasurer ? "approved" : "pending") as "approved" | "pending",
+              ts: nowTs(state),
+            },
+            draft
+          )
           set({
             state: withTrip(state, active.id, (item) =>
               logActivity(
@@ -693,38 +719,47 @@ export const useBarkadaStore = create<BarkadaStore>()(
                 const liveDirect = item.open || state.as === item.treasurer
                 if (liveDirect) {
                   const auditNote = `Edited by ${editor}`
-                  return {
+                  return applyPhoto(
+                    {
+                      ...expense,
+                      ...parsed.e,
+                      status: "approved" as const,
+                      pendingEdit: null,
+                      rejectionReason: undefined,
+                      ts,
+                      ...withAudit(expense, ts, state.as, auditNote, typed),
+                    },
+                    draft
+                  )
+                }
+                if (expense.status === "approved") {
+                  const auditNote = `Edit proposed by ${editor}`
+                  return applyPhoto(
+                    {
+                      ...expense,
+                      pendingEdit: {
+                        ...parsed.e,
+                        editedBy: state.as,
+                        ts,
+                      },
+                      ...withAudit(expense, ts, state.as, auditNote, typed),
+                    },
+                    draft
+                  )
+                }
+                const auditNote = `Resubmitted by ${editor}`
+                return applyPhoto(
+                  {
                     ...expense,
                     ...parsed.e,
-                    status: "approved" as const,
+                    status: "pending" as const,
                     pendingEdit: null,
                     rejectionReason: undefined,
                     ts,
                     ...withAudit(expense, ts, state.as, auditNote, typed),
-                  }
-                }
-                if (expense.status === "approved") {
-                  const auditNote = `Edit proposed by ${editor}`
-                  return {
-                    ...expense,
-                    pendingEdit: {
-                      ...parsed.e,
-                      editedBy: state.as,
-                      ts,
-                    },
-                    ...withAudit(expense, ts, state.as, auditNote, typed),
-                  }
-                }
-                const auditNote = `Resubmitted by ${editor}`
-                return {
-                  ...expense,
-                  ...parsed.e,
-                  status: "pending" as const,
-                  pendingEdit: null,
-                  rejectionReason: undefined,
-                  ts,
-                  ...withAudit(expense, ts, state.as, auditNote, typed),
-                }
+                  },
+                  draft
+                )
               }),
               }
               return logActivity(
@@ -1052,7 +1087,7 @@ export const useBarkadaStore = create<BarkadaStore>()(
           if (!payment) return { ok: false, message: t(state.lang, "cannotUndoPay") }
           const now = Date.now() + state.offset * DAY
           const fakeNews = canRevertConfirmed(state.as, active, payment)
-            ? makeFakeNewsNudge(active, payment, state.as, state.persona, state.lang, now)
+            ? makeFakeNewsNudge(active, payment, state.as, state.persona, "tl", now)
             : undefined
           const result = applyUndoPayment(active, payment, state.as, now, fakeNews)
           if (!result.ok) return { ok: false, message: t(state.lang, "cannotUndoPay") }
@@ -1069,7 +1104,7 @@ export const useBarkadaStore = create<BarkadaStore>()(
         },
         addMember: (name, gcash, lateComer = false) => {
           const { state } = get()
-          const trimmed = name.trim().slice(0, 24)
+          const trimmed = titleCaseName(name)
           if (!trimmed) return { ok: false, message: t(state.lang, "needMemberName") }
           const number = sanitizeGcash(gcash)
           if (!isValidGcash(number)) return { ok: false, message: t(state.lang, "badGcash") }
@@ -1102,7 +1137,7 @@ export const useBarkadaStore = create<BarkadaStore>()(
         },
         editMember: (id, name, gcash) => {
           const { state } = get()
-          const trimmed = name.trim().slice(0, 24)
+          const trimmed = titleCaseName(name)
           if (!trimmed) return { ok: false, message: t(state.lang, "needMemberName") }
           const number = sanitizeGcash(gcash)
           if (!isValidGcash(number)) return { ok: false, message: t(state.lang, "badGcash") }
@@ -1178,6 +1213,24 @@ export const useBarkadaStore = create<BarkadaStore>()(
           const active = activeTrip(state)
           if (!active) return { ok: false, message: t(state.lang, "needTripName") }
           set({ state: withTrip(state, active.id, (trip) => ({ ...trip, name: trimmed })) })
+          return { ok: true, message: t(state.lang, "saved") }
+        },
+        setTripPhotos: (patch) => {
+          const { state } = get()
+          const active = activeTrip(state)
+          if (!active) return { ok: false, message: t(state.lang, "needPeople") }
+          set({
+            state: withTrip(state, active.id, (trip) => {
+              const wrapped = (patch.wrappedPhotos ?? trip.wrappedPhotos ?? []).filter(Boolean).slice(0, 4)
+              const cover =
+                patch.coverPhotoUrl !== undefined ? patch.coverPhotoUrl : trip.coverPhotoUrl || wrapped[0] || null
+              return {
+                ...trip,
+                ...(cover ? { coverPhotoUrl: cover } : { coverPhotoUrl: undefined }),
+                ...(wrapped.length ? { wrappedPhotos: wrapped } : { wrappedPhotos: undefined }),
+              }
+            }),
+          })
           return { ok: true, message: t(state.lang, "saved") }
         },
         setOpen: (open) => {

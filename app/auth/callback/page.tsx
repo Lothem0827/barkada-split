@@ -38,7 +38,7 @@ export default function AuthCallbackPage() {
   }, [router])
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-[560px] items-center px-4">
+    <div className="flex min-h-dvh w-full items-center px-4">
       <p className="text-sm text-muted-foreground">{t(lang, "loading")}</p>
     </div>
   )

@@ -90,6 +90,8 @@ export type Expense = {
   auditNote?: string
   ts: number
   edits?: EditNote[]
+  photoUrl?: string | null
+  photoType?: "memory" | "receipt"
 }
 
 export type Payment = {
@@ -160,6 +162,8 @@ export type Trip = {
   deletedPaymentIds?: string[]
   emergencyLog?: EmergencyLogEntry[]
   activityLog?: ActivityLogItem[]
+  coverPhotoUrl?: string | null
+  wrappedPhotos?: string[]
 }
 
 export type Profile = {
@@ -206,6 +210,8 @@ export type ExpenseDraft = {
   items: ItemDraft[]
   receipt: string
   note: string
+  photoUrl?: string
+  photoType?: "memory" | "receipt"
 }
 
 export type Transfer = {
@@ -424,7 +430,7 @@ export function sanitizeProfile(raw: unknown): Profile {
   }
 }
 
-export function emptyState(lang: Lang = "tl"): AppState {
+export function emptyState(lang: Lang = "en"): AppState {
   return {
     onboarded: false,
     showTestTools: false,
@@ -654,6 +660,9 @@ export function editExpenseDraft(trip: Trip, expense: Expense, viewerId?: string
         : [newItemDraft(trip)],
     receipt: "",
     note: "",
+    ...(expense.photoUrl
+      ? { photoUrl: expense.photoUrl, photoType: expense.photoType === "receipt" ? "receipt" as const : "memory" as const }
+      : {}),
   }
 }
 

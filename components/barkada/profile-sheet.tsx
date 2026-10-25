@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useTheme } from "next-themes"
 import {
-  LanguagesIcon,
+  CheckIcon,
   MoonIcon,
   RefreshCwIcon,
   SmartphoneIcon,
@@ -15,7 +15,6 @@ import {
 import { ArmButton } from "@/components/barkada/arm-button"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer"
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
@@ -28,11 +27,9 @@ import { useBarkada, useBarkadaStore } from "@/lib/store"
 import { getAuthUser, isSupabaseConfigured, linkGoogle } from "@/lib/supabase"
 import {
   AVATARS,
-  LANGS,
   PERSONAS,
   initial,
   memberName,
-  type Lang,
   type Persona,
 } from "@/lib/types"
 
@@ -42,12 +39,6 @@ const PERSONA_COPY: Record<Persona, CopyKey> = {
   tita: "personaTita",
   corporate: "personaCorporate",
   guilttrip: "personaGuilt",
-}
-
-const LANG_COPY: Record<Lang, CopyKey> = {
-  tl: "langTaglish",
-  en: "langEnglish",
-  ceb: "langBisaya",
 }
 
 const THEME_COPY = {
@@ -104,7 +95,7 @@ export function ProfilePill({ onClick }: { onClick: () => void }) {
       type="button"
       onClick={onClick}
       aria-label={t(state.lang, "openProfile")}
-      className="flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 transition active:scale-95"
+      className="flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-card px-3 transition active:scale-95"
     >
       <span className="shrink-0 text-base">{mark}</span>
       <span className="max-w-[72px] truncate text-sm font-bold">{name}</span>
@@ -174,7 +165,7 @@ function TimeTravelBar({ className }: { className?: string }) {
 
 export function ProfileSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const router = useRouter()
-  const { state, saveProfile, setLang, setPersona, setRecoveryPin, setMockGoogleEmail, replayOnboarding } = useBarkada()
+  const { state, saveProfile, setPersona, setRecoveryPin, setMockGoogleEmail, replayOnboarding } = useBarkada()
   const { lang, profile, persona, lastSyncedAt, recoveryPinHash, showTestTools } = state
   const { theme, setTheme } = useTheme()
   const { email, linked, refresh } = useGoogleAccount()
@@ -240,7 +231,7 @@ export function ProfileSheet({ open, onOpenChange }: { open: boolean; onOpenChan
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} swipeDirection="down" showSwipeHandle>
-      <DrawerContent className="mx-auto max-w-[560px]">
+      <DrawerContent className="mx-auto">
         <DrawerHeader>
           <div className="flex items-start justify-between gap-2 text-left">
             <DrawerTitle className="wrap-break-word pr-2">{t(lang, "profileTitle")}</DrawerTitle>
@@ -256,8 +247,9 @@ export function ProfileSheet({ open, onOpenChange }: { open: boolean; onOpenChan
           </div>
         </DrawerHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 py-3 pb-[max(16px,env(safe-area-inset-bottom))]">
-          <section className="flex flex-col gap-3">
-            <h3 className="font-heading text-sm font-semibold">{t(lang, "identitySection")}</h3>
+          <section className="flex flex-col gap-2">
+            <p className="text-sm text-muted-foreground">{t(lang, "identitySection")}</p>
+            <div className="flex flex-col gap-3 rounded-2xl bg-muted px-4 py-3">
             <FieldGroup>
               <Field>
                 <FieldLabel>{t(lang, "obAvatar")}</FieldLabel>
@@ -267,11 +259,12 @@ export function ProfileSheet({ open, onOpenChange }: { open: boolean; onOpenChan
                       <Button
                         key={item}
                         type="button"
-                        variant={avatar === item ? "default" : "outline"}
-                        className="size-11 shrink-0 snap-start text-lg"
+                        variant="outline"
+                        className={`relative size-11 shrink-0 snap-start text-lg ${avatar === item ? "bg-white text-neutral-950 hover:bg-white" : ""}`}
                         aria-pressed={avatar === item}
                         onClick={() => setAvatar(item)}
                       >
+                        {avatar === item ? <CheckIcon className="absolute top-1 right-1 size-3" /> : null}
                         {item}
                       </Button>
                     ))}
@@ -319,12 +312,13 @@ export function ProfileSheet({ open, onOpenChange }: { open: boolean; onOpenChan
             <Button className="min-h-[48px] w-full" onClick={saveIdentity}>
               {t(lang, "saveProfile")}
             </Button>
+            </div>
           </section>
 
-          <Card className="shrink-0">
-            <CardHeader className="min-w-0">
-              <CardTitle className="flex min-w-0 flex-col items-start gap-1.5">
-                {t(lang, "accountSection")}
+          <section className="flex flex-col gap-2">
+            <p className="text-sm text-muted-foreground">{t(lang, "accountSection")}</p>
+            <div className="flex flex-col gap-3 rounded-2xl bg-muted px-4 py-3">
+              <div className="flex flex-col gap-1.5">
                 {linked ? (
                   <Badge variant="secondary">
                     <span className="size-2 rounded-full bg-emerald-500" />
@@ -336,14 +330,12 @@ export function ProfileSheet({ open, onOpenChange }: { open: boolean; onOpenChan
                     {t(lang, "guestBadge")}
                   </Badge>
                 )}
-              </CardTitle>
-              <CardDescription>
-                {linked
-                  ? `${email}${lastSyncedAt ? " · " + t(lang, "lastSynced") + " " + formatSynced(lastSyncedAt) : " · " + t(lang, "neverSynced")}`
-                  : t(lang, "googleHintProfile")}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-3">
+                <p className="text-xs text-muted-foreground">
+                  {linked
+                    ? `${email}${lastSyncedAt ? " · " + t(lang, "lastSynced") + " " + formatSynced(lastSyncedAt) : " · " + t(lang, "neverSynced")}`
+                    : t(lang, "googleHintProfile")}
+                </p>
+              </div>
               {!linked ? (
                 <Button className="min-h-[48px] w-full" variant="outline" onClick={linkAccount}>
                   {t(lang, "linkGoogleBackup")}
@@ -371,35 +363,12 @@ export function ProfileSheet({ open, onOpenChange }: { open: boolean; onOpenChan
                   {t(lang, "recoveryPinHint")}
                 </FieldDescription>
               </Field>
-            </CardContent>
-          </Card>
+            </div>
+          </section>
 
-          <section className="flex flex-col gap-4">
-            <h3 className="font-heading text-sm font-semibold">{t(lang, "prefsSection")}</h3>
-            <Field>
-              <FieldLabel className="inline-flex items-center gap-1.5">
-                <LanguagesIcon className="size-3.5" />
-                {t(lang, "langUi")}
-              </FieldLabel>
-              <div className="no-scrollbar -mx-4 min-w-0 overflow-x-auto overscroll-x-contain snap-x px-4">
-                <ToggleGroup
-                  variant="outline"
-                  spacing={2}
-                  className="max-w-none flex-nowrap"
-                  value={[lang]}
-                  onValueChange={(next) => {
-                    const picked = next[next.length - 1] as Lang | undefined
-                    if (picked) setLang(picked)
-                  }}
-                >
-                  {LANGS.map((item) => (
-                    <ToggleGroupItem key={item} value={item} className="min-h-[40px] shrink-0 snap-start px-3.5">
-                      {t(lang, LANG_COPY[item])}
-                    </ToggleGroupItem>
-                  ))}
-                </ToggleGroup>
-              </div>
-            </Field>
+          <section className="flex flex-col gap-2">
+            <p className="text-sm text-muted-foreground">{t(lang, "prefsSection")}</p>
+            <div className="flex flex-col gap-4 rounded-2xl bg-muted px-4 py-3">
             <Field>
               <FieldLabel>{t(lang, "appearance")}</FieldLabel>
               <ToggleGroup
@@ -443,7 +412,7 @@ export function ProfileSheet({ open, onOpenChange }: { open: boolean; onOpenChan
                   ))}
                 </ToggleGroup>
               </div>
-              <FieldDescription>{sampleReminder(persona, lang, name || profile.name || "Bea").split("\n")[0]}</FieldDescription>
+              <FieldDescription>{sampleReminder(persona, "tl", name || profile.name || "Bea").split("\n")[0]}</FieldDescription>
             </Field>
             <Field>
               <FieldLabel>
@@ -452,10 +421,12 @@ export function ProfileSheet({ open, onOpenChange }: { open: boolean; onOpenChan
               </FieldLabel>
               <TimeTravelBar />
             </Field>
+            </div>
           </section>
 
-          <section className="flex flex-col gap-3">
-            <h3 className="font-heading text-sm font-semibold">{t(lang, "testSection")}</h3>
+          <section className="flex flex-col gap-2">
+            <p className="text-sm text-muted-foreground">{t(lang, "testSection")}</p>
+            <div className="flex flex-col gap-3 rounded-2xl bg-muted px-4 py-3">
             {showTestTools ? <ViewAsBar /> : null}
             <ArmButton
               className="min-h-[42px] w-full"
@@ -476,6 +447,7 @@ export function ProfileSheet({ open, onOpenChange }: { open: boolean; onOpenChan
                 }
               }}
             />
+            </div>
           </section>
         </div>
       </DrawerContent>

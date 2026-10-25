@@ -152,7 +152,7 @@ export function InviteBarkadaSheet({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} swipeDirection="down" showSwipeHandle>
-      <DrawerContent className="mx-auto max-w-[560px]">
+      <DrawerContent className="mx-auto">
         <DrawerHeader>
           <DrawerTitle className="wrap-break-word">{t(lang, "inviteSheetTitle").replace("{name}", live.name)}</DrawerTitle>
           <DrawerDescription>{t(lang, "inviteHint")}</DrawerDescription>
@@ -257,7 +257,7 @@ export function InviteBarkadaSheet({
             </div>
           ) : null}
 
-          <div className="rounded-xl border bg-card p-3 text-sm wrap-break-word">{message}</div>
+          <div className="rounded-xl bg-card p-3 text-sm wrap-break-word">{message}</div>
         </div>
         <DrawerFooter>
           <Button size="cta" className="min-h-[52px] font-extrabold" onClick={() => void share()} disabled={!url}>

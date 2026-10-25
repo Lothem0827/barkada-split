@@ -24,14 +24,14 @@ export default function NotFound() {
   }
 
   return (
-    <div className="min-h-dvh bg-muted">
-      <div className="mx-auto flex min-h-dvh w-full max-w-[560px] flex-col justify-center gap-6 bg-background px-6">
+    <div className="min-h-dvh bg-background">
+      <div className="flex min-h-dvh w-full flex-col justify-center gap-6 bg-background px-6">
         <div className="flex flex-col gap-2">
           <p className="font-heading text-3xl font-extrabold tracking-tight wrap-break-word">
-            <CompassIcon className="mb-1 inline size-7 align-[-4px]" /> Naligaw ka ata, bes! (404 — Drawing
-            pa ang Lakad na &apos;to)
+            <CompassIcon className="mb-1 inline size-7 align-[-4px]" /> This trip isn&apos;t on the map
+            (404)
           </p>
-          <p className="text-sm text-muted-foreground">Enter a join code or balik sa home.</p>
+          <p className="text-sm text-muted-foreground">Enter a join code or go back home.</p>
         </div>
         <div className="flex flex-col gap-2">
           <Input
@@ -49,11 +49,11 @@ export default function NotFound() {
           />
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           <Button size="cta" onClick={join}>
-            Join lakad
+            Join trip
           </Button>
           <Button size="cta" variant="outline" onClick={() => router.push("/")}>
             <HouseIcon data-icon="inline-start" />
-            Balik sa Home
+            Back home
           </Button>
         </div>
       </div>

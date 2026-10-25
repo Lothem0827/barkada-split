@@ -4,16 +4,17 @@ import { useState } from "react"
 import {
   CheckIcon,
   ClockIcon,
+  EllipsisVerticalIcon,
   PencilIcon,
   ReceiptIcon,
   Share2Icon,
   SparklesIcon,
-  Trash2Icon,
   TriangleAlertIcon,
   Undo2Icon,
 } from "lucide-react"
 
 import { ArmButton } from "@/components/barkada/arm-button"
+import { TaliStrip } from "@/components/barkada/tali-strip"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -24,6 +25,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer"
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { balances, fmtDate, namesList, peso, sharesOf, totalOf, wrappedStats } from "@/lib/calc"
 import { t, type CopyKey } from "@/lib/i18n"
@@ -115,12 +117,16 @@ function ExpenseCard({
   const { state } = useBarkada()
   const { lang, as } = state
   const [returning, setReturning] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [photoOpen, setPhotoOpen] = useState(false)
   const shares = sharesOf(trip, expense)
   const last = expense.edits?.[expense.edits.length - 1]
   const pending = expense.status === "pending"
   const rejected = expense.status === "rejected"
   const mine = expense.addedBy === as
+  const hasMenu = !!(onEdit || onDelete)
   return (
+    <>
     <Card
       className={
         rejected
@@ -131,9 +137,32 @@ function ExpenseCard({
       }
     >
       <CardHeader>
-        <CardTitle className="wrap-break-word">{expense.title}</CardTitle>
-        <CardAction>
+        <CardTitle className="flex items-start gap-2">
+          {expense.photoUrl ? (
+            <button
+              type="button"
+              className="size-12 shrink-0 overflow-hidden rounded-lg"
+              onClick={() => setPhotoOpen(true)}
+              aria-label={expense.title}
+            >
+              <img src={expense.photoUrl} alt="" className="size-full object-cover" />
+            </button>
+          ) : null}
+          <span className="wrap-break-word">{expense.title}</span>
+        </CardTitle>
+        <CardAction className="flex items-center gap-1">
           <span className="font-mono font-semibold tabular-nums">{peso(totalOf(expense))}</span>
+          {hasMenu ? (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-9"
+              aria-label={expense.title}
+              onClick={() => setMenuOpen(true)}
+            >
+              <EllipsisVerticalIcon className="size-4" />
+            </Button>
+          ) : null}
         </CardAction>
         <CardDescription>
           {memberName(trip, expense.payer)} {t(lang, "paidBy")} · {fmtDate(expense.ts)} ·{" "}
@@ -263,50 +292,67 @@ function ExpenseCard({
             </div>
           )
         ) : null}
-        {rejected && (onEdit || onDelete) ? (
-          <div className="grid grid-cols-2 gap-2">
-            {onEdit ? (
-              <Button className={thumbClass} onClick={onEdit}>
-                <PencilIcon data-icon="inline-start" />
-                {t(lang, "fixResubmit")}
-              </Button>
-            ) : null}
-            {onDelete ? (
-              <ArmButton
-                variant="ghost"
-                className="w-full whitespace-normal"
-                label={
-                  <>
-                    <Trash2Icon className="size-4" />
-                    {t(lang, "deleteBill")}
-                  </>
-                }
-                armedLabel={t(lang, "sureDeleteBill")}
-                cancelLabel={t(lang, "cancel")}
-                onConfirm={onDelete}
-              />
-            ) : null}
-          </div>
-        ) : null}
-        {!rejected && !proposalActions && (onEdit || onDelete) ? (
-          <div className="flex flex-wrap items-center gap-2">
-            {onEdit ? (
-              <Button size="touch" variant="outline" className="min-h-[40px] flex-1" onClick={onEdit}>
-                {t(lang, "edit")}
-              </Button>
-            ) : null}
-            {onDelete ? (
-              <ArmButton
-                label={pending && mine ? t(lang, "withdraw") : t(lang, "del")}
-                armedLabel={pending && mine ? t(lang, "sureWithdraw") : t(lang, "sureDel")}
-                cancelLabel={t(lang, "cancel")}
-                onConfirm={onDelete}
-              />
-            ) : null}
-          </div>
-        ) : null}
       </CardContent>
     </Card>
+      {hasMenu ? (
+        <Drawer open={menuOpen} onOpenChange={setMenuOpen} swipeDirection="down" showSwipeHandle>
+          <DrawerContent className="mx-auto">
+            <DrawerHeader>
+              <DrawerTitle>{expense.title}</DrawerTitle>
+            </DrawerHeader>
+            <div className="flex flex-col gap-2 px-4 py-3 pb-[max(16px,env(safe-area-inset-bottom))]">
+              {onEdit ? (
+                <Button
+                  size="cta"
+                  variant="outline"
+                  onClick={() => {
+                    setMenuOpen(false)
+                    onEdit()
+                  }}
+                >
+                  {rejected ? t(lang, "fixResubmit") : t(lang, "edit")}
+                </Button>
+              ) : null}
+              {onDelete ? (
+                <ArmButton
+                  className="w-full"
+                  label={
+                    rejected ? t(lang, "deleteBill") : pending && mine ? t(lang, "withdraw") : t(lang, "del")
+                  }
+                  armedLabel={
+                    rejected
+                      ? t(lang, "sureDeleteBill")
+                      : pending && mine
+                        ? t(lang, "sureWithdraw")
+                        : t(lang, "sureDel")
+                  }
+                  cancelLabel={t(lang, "cancel")}
+                  onConfirm={() => {
+                    setMenuOpen(false)
+                    onDelete()
+                  }}
+                />
+              ) : null}
+            </div>
+          </DrawerContent>
+        </Drawer>
+      ) : null}
+      {photoOpen && expense.photoUrl ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={expense.title}
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/92 p-5 text-white"
+          onClick={() => setPhotoOpen(false)}
+        >
+          <img src={expense.photoUrl} alt={expense.title} className="max-h-[75dvh] max-w-full object-contain" />
+          <p className="mt-3 text-center text-base font-semibold">{expense.title}</p>
+          <p className="text-sm opacity-80">
+            {memberName(trip, expense.payer)} · {peso(totalOf(expense))}
+          </p>
+        </div>
+      ) : null}
+    </>
   )
 }
 
@@ -378,6 +424,9 @@ export function GastosView({
             )}
           </CardDescription>
         </CardHeader>
+        <CardContent>
+          <TaliStrip trip={trip} viewerId={as} activeTab="gastos" now={now} lang={lang} />
+        </CardContent>
       </Card>
 
       {showInvite ? (

@@ -1,8 +1,25 @@
+"use client"
+
+import { useState } from "react"
 import { GhostIcon, GiftIcon, LandmarkIcon, SmileIcon, ZapIcon } from "lucide-react"
 
+import { Button } from "@/components/ui/button"
 import { dayStr, fmtDate, fmtDays, peso, wrappedStats } from "@/lib/calc"
+import { cycleWrappedRoast, getWrappedVerdict, wrappedRoastSeed } from "@/lib/companion-ai"
+import { memoryPhotosOf, type MemoryPhoto } from "@/lib/image-utils"
 import { t } from "@/lib/i18n"
 import { memberName, type Lang, type Trip } from "@/lib/types"
+
+function Polaroid({ photo, big = false }: { photo: MemoryPhoto; big?: boolean }) {
+  return (
+    <div className={`bg-white p-1 shadow-sm ${big ? "-rotate-1" : "rotate-2"}`}>
+      <img src={photo.url} alt="" className={`w-full object-cover ${big ? "h-28" : "h-12"}`} />
+      {photo.caption ? (
+        <p className="mt-0.5 truncate px-0.5 text-center text-[9px] text-neutral-700">{photo.caption}</p>
+      ) : null}
+    </div>
+  )
+}
 
 function tampoDetail(stats: ReturnType<typeof wrappedStats>, lang: Lang) {
   if (!stats.tampo) return t(lang, "noTampo")
@@ -56,12 +73,27 @@ function Award({
   )
 }
 
-export function WrappedCard({ trip, now, lang }: { trip: Trip; now: number; lang: Lang }) {
+export function WrappedCard({
+  trip,
+  now,
+  lang,
+  interactive = true,
+}: {
+  trip: Trip
+  now: number
+  lang: Lang
+  interactive?: boolean
+}) {
+  const [seed, setSeed] = useState(() => wrappedRoastSeed(trip.id))
   const stats = wrappedStats(trip, now)
   const range = stats.start
     ? fmtDate(stats.start) + (stats.days > 1 && stats.end ? " – " + fmtDate(stats.end) : "")
     : t(lang, "noLakad")
   const nameOf = (id: string) => memberName(trip, id)
+  const verdict = getWrappedVerdict(trip, now, seed)
+  const shots = memoryPhotosOf(trip).slice(0, 4)
+  const hero = shots[0]
+  const rest = shots.slice(1)
 
   return (
     <article className="receipt relative overflow-hidden bg-paper px-4 pt-6 pb-5 font-mono text-paper-ink shadow-sm">
@@ -77,6 +109,24 @@ export function WrappedCard({ trip, now, lang }: { trip: Trip; now: number; lang
           {range} · {trip.members.length} {t(lang, "pax")}
         </div>
       </div>
+      {hero ? (
+        <div className="mt-3">
+          {shots.length === 1 ? (
+            <Polaroid photo={hero} big />
+          ) : (
+            <div className="grid grid-cols-3 gap-1.5">
+              <div className="col-span-2">
+                <Polaroid photo={hero} big />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {rest.map((photo) => (
+                  <Polaroid key={photo.url} photo={photo} />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : null}
       <div className="my-3 border-t-2 border-dashed border-paper-line" />
       <Line label={t(lang, "totalLine")} value={peso(stats.total)} big />
       <Line label={t(lang, "daysLine")} value={String(stats.days)} />
@@ -116,6 +166,24 @@ export function WrappedCard({ trip, now, lang }: { trip: Trip; now: number; lang
           name={stats.tampo ? nameOf(stats.tampo.id) : "—"}
           detail={tampoDetail(stats, lang)}
         />
+      </div>
+      <div className="my-3 border-t-2 border-dashed border-paper-line" />
+      <div className="rounded-lg border-2 border-paper-line px-2.5 py-2">
+        <div className="text-center text-[10px] font-bold tracking-widest">
+          {t(lang, "taliVerdictHeader")}
+        </div>
+        <p className="mt-1.5 text-center text-[11px] leading-snug wrap-break-word">{verdict}</p>
+        {interactive ? (
+          <Button
+            type="button"
+            size="xs"
+            variant="outline"
+            className="mx-auto mt-2 flex border-paper-line bg-transparent text-paper-ink hover:bg-paper-ink/5"
+            onClick={() => setSeed(cycleWrappedRoast(trip.id))}
+          >
+            {t(lang, "taliRegenerate")}
+          </Button>
+        ) : null}
       </div>
       <div className="my-3 border-t-2 border-dashed border-paper-line" />
       <div

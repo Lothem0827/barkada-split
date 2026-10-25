@@ -1,10 +1,10 @@
-# Barkada Split (Next.js PWA + Supabase Edition)
+# Tally — Bill Splitter (Next.js PWA + Supabase Edition)
 
 Guide for AI coding agents working on this project. Read this before changing any files.
 
 ## What this is
 
-Barkada Split is a mobile-first Progressive Web App (Next.js App Router + TypeScript + Tailwind CSS + Supabase + Zustand) for splitting group trip expenses among Filipino friend groups. Core business logic (`barkada-split/lib/split-math.ts`) and the Zustand store (`barkada-split/lib/store.tsx`) stay framework-agnostic enough to port to Expo / React Native later.
+Tally is a mobile-first Progressive Web App (Next.js App Router + TypeScript + Tailwind CSS + Supabase + Zustand) for splitting group trip expenses among friend groups. Core business logic (`barkada-split/lib/split-math.ts`) and the Zustand store (`barkada-split/lib/store.tsx`) stay framework-agnostic enough to port to Expo / React Native later. Display name is Tally; the mascot is Tally. Routes, storage keys, and repo paths still say barkada/lakad.
 
 ## Tech stack
 
@@ -18,10 +18,10 @@ Barkada Split is a mobile-first Progressive Web App (Next.js App Router + TypeSc
 - First-launch users (`!onboarded`) go to `/onboarding`. Bottom nav is hidden there and on `/join/[code]`.
 - `showTestTools` is false for real create/join, true for Explore Demo.
 - One treasurer per trip. Treasurer approves/rejects, deletes, confirms payments, edits GCash, toggles `open`, hands off, and resets seat locks.
-- `open` auto-approves expenses **and** allows “Wala ako sa listahan” self-add on join.
+- `open` auto-approves expenses **and** allows “I'm not on the list” self-add on join.
 - Payments: debtor/treasurer marks `sent`; recipient/treasurer confirms. Only confirmed payments change balances.
 - No real money movement. Copy # / Copy ₱ only.
-- Tone: playful Taglish, never genuinely shaming.
+- Tone: English UI. Tali parinig lines (`lib/companion-ai.ts`) and singil / GCash reminder bodies (`lib/reminders.ts`) stay Taglish. Taglish/Bisaya UI is deferred.
 
 ## Data model
 

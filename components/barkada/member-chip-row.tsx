@@ -1,5 +1,7 @@
 "use client"
 
+import { CheckIcon } from "lucide-react"
+
 import { Button } from "@/components/ui/button"
 import { initial } from "@/lib/types"
 import { cn } from "cn"
@@ -27,18 +29,17 @@ export function MemberChipRow({
           <Button
             key={member.id}
             type="button"
-            variant={on ? "default" : "outline"}
+            variant="outline"
             aria-pressed={on}
             disabled={disabled?.(member.id) ?? false}
-            className="min-h-[42px] shrink-0 snap-start gap-2 px-3.5"
+            className={cn(
+              "min-h-[42px] shrink-0 snap-start gap-2 px-3.5",
+              on && "bg-white text-neutral-950 hover:bg-white"
+            )}
             onClick={() => onToggle(member.id)}
           >
-            <span
-              className={cn(
-                "grid size-6 place-items-center rounded-full text-xs font-bold",
-                on ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-foreground"
-              )}
-            >
+            {on ? <CheckIcon className="size-3.5" /> : null}
+            <span className="grid size-6 place-items-center rounded-full bg-muted text-xs font-bold text-foreground">
               {initial(member.name)}
             </span>
             <span className="max-w-[140px] truncate">{label ? label(member) : member.name}</span>

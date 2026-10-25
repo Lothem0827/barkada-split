@@ -3,7 +3,6 @@ import {
   PERSONA_IDS,
   TABS,
   emptyState,
-  isLang,
   isSeedRoster,
   sanitizeProfile,
   type AppState,
@@ -30,7 +29,7 @@ export function hydrateState(parsed: unknown, fromV5 = false): AppState {
   if (!parsed || typeof parsed !== "object") return emptyState()
   const row = parsed as Partial<AppState>
   const lakads = readLakads(row.lakads)
-  const lang: Lang = isLang(row.lang) ? row.lang : "en"
+  const lang: Lang = "en"
   const tab: Tab = TABS.includes(row.tab as Tab) ? (row.tab as Tab) : "home"
   const persona: Persona = PERSONA_IDS.includes(row.persona as Persona) ? (row.persona as Persona) : "default"
   const migrated = fromV5 || typeof row.onboarded !== "boolean"

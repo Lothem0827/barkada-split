@@ -167,7 +167,7 @@ export function JoinView({ code, seat }: { code: string; seat?: string }) {
   const gridMembers = trip ? (showAll || !featured ? trip.members : []) : []
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-[560px] flex-col bg-background">
+    <div className="flex min-h-dvh w-full flex-col bg-background">
       <header className="flex items-center gap-2 border-b px-4 pt-[max(12px,env(safe-area-inset-top))] pb-3">
         <Button
           variant="outline"
@@ -253,8 +253,8 @@ export function JoinView({ code, seat }: { code: string; seat?: string }) {
                         setError("")
                         setGcash(profile.gcash)
                       }}
-                      className={`flex min-h-[56px] flex-col items-start justify-center gap-1 rounded-xl border px-3 py-3 text-left ${
-                        selected === "new" ? "border-primary bg-primary/5" : "bg-card"
+                      className={`flex min-h-[56px] flex-col items-start justify-center gap-1 rounded-xl px-3 py-3 text-left ${
+                        selected === "new" ? "bg-primary/10" : "bg-card"
                       }`}
                     >
                       <PlusIcon className="size-4" />
@@ -266,7 +266,7 @@ export function JoinView({ code, seat }: { code: string; seat?: string }) {
             )}
 
             {recoverMember ? (
-              <div className="flex flex-col gap-3 rounded-xl border p-4">
+              <div className="flex flex-col gap-3 rounded-xl bg-card p-4">
                 <p className="text-sm text-muted-foreground">
                   {t(lang, "takenHint").replace("{name}", memberName(trip, trip.treasurer))}
                 </p>
@@ -368,9 +368,9 @@ function SeatCard({
     <button
       type="button"
       onClick={onSelect}
-      className={`flex min-h-[56px] flex-col items-start justify-between gap-1 rounded-xl border px-3 py-3 text-left ${
+      className={`flex min-h-[56px] flex-col items-start justify-between gap-1 rounded-xl px-3 py-3 text-left ${
         locked ? "opacity-60" : ""
-      } ${selected ? "border-2 border-primary bg-primary/5" : "bg-card"}`}
+      } ${selected ? "bg-primary/10" : "bg-card"}`}
     >
       <span className="flex items-center gap-1 text-sm font-semibold">
         {locked ? (

@@ -7,7 +7,6 @@ import {
   ArrowLeftIcon,
   BeerIcon,
   CrownIcon,
-  LanguagesIcon,
   MoonIcon,
   MountainIcon,
   PalmtreeIcon,
@@ -92,12 +91,12 @@ export function OnboardingView() {
   const rosterReady = friends.length > 0 || !!friendDraft.trim()
 
   return (
-    <div className="min-h-dvh overflow-x-hidden bg-muted">
-      <div className="mx-auto flex min-h-dvh w-full max-w-[560px] flex-col bg-background">
+    <div className="min-h-dvh overflow-x-hidden bg-background">
+      <div className="flex min-h-dvh w-full flex-col bg-background">
         <header className="flex items-center gap-2 px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-2">
           {step === "welcome" ? (
             <div className="min-w-0 flex-1">
-              <p className="font-heading text-lg font-extrabold tracking-tight">Barkada Split</p>
+              <p className="font-heading text-lg font-extrabold tracking-tight">Tally</p>
             </div>
           ) : (
             <>
@@ -128,9 +127,6 @@ export function OnboardingView() {
               </p>
             </>
           )}
-          <Button variant="outline" size="icon" className="size-11" aria-label={t(lang, "lang")} onClick={store.toggleLang}>
-            <LanguagesIcon />
-          </Button>
           <Button
             variant="outline"
             size="icon"
@@ -242,7 +238,7 @@ export function OnboardingView() {
                     </ToggleGroup>
                   </div>
                   <p className="text-sm text-muted-foreground wrap-break-word">
-                    {sampleReminder(draft.persona, lang, draft.name || "Bea").split("\n")[0]}
+                    {sampleReminder(draft.persona, "tl", draft.name || "Bea").split("\n")[0]}
                   </p>
                 </Field>
               </FieldGroup>
@@ -332,7 +328,7 @@ export function OnboardingView() {
                 </Field>
                 <Field>
                   <FieldLabel>{t(lang, "obRules")}</FieldLabel>
-                  <div className="flex items-center justify-between gap-3 rounded-xl border px-3 py-3">
+                  <div className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-3">
                     <div className="min-w-0">
                       <p className="font-medium">{openMode ? t(lang, "obOpenAuto") : t(lang, "obOpenLock")}</p>
                       <p className="text-sm text-muted-foreground">{t(lang, "openHint")}</p>

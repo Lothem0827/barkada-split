@@ -5,27 +5,24 @@ import {
   CameraIcon,
   ClockIcon,
   CrownIcon,
+  EllipsisVerticalIcon,
+  ImagePlusIcon,
   MailIcon,
-  PencilIcon,
   ReceiptIcon,
-  RefreshCwIcon,
   ScrollTextIcon,
   Share2Icon,
-  SparkleIcon,
-  Trash2Icon,
   UnlockIcon,
   UsersIcon,
 } from "lucide-react"
 
 import { ActivityLogCard } from "@/components/barkada/activity-log"
-import { ArmButton } from "@/components/barkada/arm-button"
+import { MemberSheet } from "@/components/barkada/sheets"
 import { WrappedCard } from "@/components/barkada/wrapped-card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item"
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer"
+import { Item, ItemActions, ItemContent, ItemGroup, ItemTitle } from "@/components/ui/item"
 import { toast } from "@/components/ui/toast"
 import {
   defaultBarkadaHub,
@@ -34,14 +31,14 @@ import {
   wrappedShareText,
   type BarkadaHub,
 } from "@/lib/activity"
-import { sanitizeGcash } from "@/lib/gcash"
+import { compressImage } from "@/lib/image-utils"
 import { t } from "@/lib/i18n"
 import { inviteUrl } from "@/lib/join-code"
-import { splitNameDraft } from "@/lib/member-names"
+import { titleCaseName } from "@/lib/member-names"
 import { isSeedTripId } from "@/lib/merge-trip"
 import { shareOrCopy } from "@/lib/snapshot"
 import { useBarkada } from "@/lib/store"
-import { initial, memberCanRemove } from "@/lib/types"
+import { initial, memberCanRemove, type Lang, type Member } from "@/lib/types"
 
 const SEEN_KEY = "barkada-seen-activity"
 const seenListeners = new Set<() => void>()
@@ -60,6 +57,10 @@ function readSeen(): Record<string, number> {
 function writeSeen(map: Record<string, number>) {
   if (typeof window === "undefined") return
   window.localStorage.setItem(SEEN_KEY, JSON.stringify(map))
+}
+
+export function lastSeenOf(tripId: string) {
+  return readSeen()[tripId] ?? 0
 }
 
 export function peekLastSeen(tripId: string, now = Date.now()) {
@@ -110,27 +111,21 @@ export function BarkadaView({
     trip,
     now,
     treasurer,
-    addMember,
-    editMember,
     removeMember,
-    saveProfile,
     setScreenshotMode,
+    setTripPhotos,
   } = useBarkada()
-  const { lang, as, profile, persona, screenshotMode, tab } = state
+  const { lang, as, screenshotMode, tab } = state
   const lastSeen = useLastSeenActivity(trip?.id ?? null)
   const [hub, setHub] = useState<BarkadaHub>(() =>
     trip && hubMemo.has(trip.id) ? hubMemo.get(trip.id)! : "roster"
   )
-  const [friendName, setFriendName] = useState("")
-  const [friendGcash, setFriendGcash] = useState("")
-  const [addError, setAddError] = useState("")
-  const [lateComer, setLateComer] = useState(true)
-  const [renameId, setRenameId] = useState("")
-  const [renameValue, setRenameValue] = useState("")
-  const [gcashId, setGcashId] = useState("")
-  const [gcashValue, setGcashValue] = useState("")
+  const [friendOpen, setFriendOpen] = useState(false)
+  const [friendId, setFriendId] = useState<string | null>(null)
+  const [menuId, setMenuId] = useState<string | null>(null)
   const [hiddenId, setHiddenId] = useState<string | null>(null)
   const pendingRemove = useRef<{ id: string; timer: number } | null>(null)
+  const wrappedPhotoRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     return () => {
@@ -183,67 +178,9 @@ export function BarkadaView({
     toast.add({ title: message, timeout })
   }
 
-  function submitFriends() {
-    const names = splitNameDraft(friendName, true).complete
-    if (!names.length) {
-      setAddError(t(lang, "needMemberName"))
-      return
-    }
-    const late = lateComer && live.expenses.length > 0
-    const skipped: string[] = []
-    let added = 0
-    let lastError = ""
-    for (const name of names) {
-      const result = addMember(name, friendGcash, late)
-      if (result.ok) added += 1
-      else {
-        skipped.push(name)
-        lastError = result.message
-      }
-    }
-    if (!added) {
-      setAddError(lastError || t(lang, "needMemberName"))
-      return
-    }
-    setAddError("")
-    setFriendName("")
-    setFriendGcash("")
-    notify(
-      skipped.length
-        ? t(lang, "rosterAdded").replace("{n}", String(added)).replace("{skipped}", skipped.join(", "))
-        : added === 1
-          ? t(lang, "addedToBarkada").replace("{name}", names[0])
-          : t(lang, "rosterAddedClean").replace("{n}", String(added))
-    )
-  }
-
-  function commitRename() {
-    if (!renameId) return
-    const member = live.members.find((item) => item.id === renameId)
-    const result = editMember(renameId, renameValue, member?.gcash || "")
-    if (!result.ok) {
-      notify(result.message)
-      return
-    }
-    setRenameId("")
-    notify(result.message)
-  }
-
-  function commitGcash() {
-    if (!gcashId) return
-    const member = live.members.find((item) => item.id === gcashId)
-    if (!member) {
-      setGcashId("")
-      return
-    }
-    const result = editMember(gcashId, member.name, gcashValue)
-    if (!result.ok) {
-      notify(result.message)
-      return
-    }
-    if (gcashId === as) saveProfile({ ...profile, persona, gcash: sanitizeGcash(gcashValue) })
-    setGcashId("")
-    notify(result.message)
+  function openFriend(id: string | null) {
+    setFriendId(id)
+    setFriendOpen(true)
   }
 
   async function shareWrapped() {
@@ -289,7 +226,7 @@ export function BarkadaView({
     <div className="flex flex-col gap-4">
       {!screenshotMode ? (
         <div className="sticky top-0 z-10 -mx-4 bg-background px-4 pb-1">
-          <div className="grid min-h-[44px] grid-cols-3 gap-1 rounded-2xl border border-border bg-muted p-1">
+          <div className="grid min-h-[44px] grid-cols-3 gap-1 rounded-2xl bg-muted p-1">
             {HUBS.map((id) => {
               const active = hub === id
               const Icon = id === "roster" ? UsersIcon : id === "chismis" ? ScrollTextIcon : ReceiptIcon
@@ -327,7 +264,7 @@ export function BarkadaView({
       {hub === "roster" && !screenshotMode ? (
         <section className="flex flex-col gap-4">
           {liveInvite ? (
-            <div className="flex flex-col gap-2 rounded-xl border bg-card p-3">
+            <div className="flex flex-col gap-2 rounded-xl bg-card p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <Badge variant="secondary" className="h-8 px-3 font-mono text-sm tracking-[0.18em]">
                   {live.joinCode}
@@ -351,116 +288,23 @@ export function BarkadaView({
             </p>
           )}
 
-          {treasurer ? (
-            <form
-              className="flex flex-col gap-2"
-              onSubmit={(event) => {
-                event.preventDefault()
-                submitFriends()
-              }}
-            >
-              <div className="flex flex-wrap gap-2">
-                <Input
-                  className="min-w-[10rem] flex-1"
-                  enterKeyHint="next"
-                  autoComplete="off"
-                  maxLength={80}
-                  value={friendName}
-                  placeholder={t(lang, "addFriendName")}
-                  aria-invalid={addError ? true : undefined}
-                  onChange={(event) => {
-                    setFriendName(event.target.value)
-                    setAddError("")
-                  }}
-                />
-                <Input
-                  type="tel"
-                  inputMode="tel"
-                  autoComplete="off"
-                  className="w-[9.5rem] font-mono"
-                  maxLength={16}
-                  value={friendGcash}
-                  placeholder={t(lang, "friendGcash")}
-                  onChange={(event) => setFriendGcash(sanitizeGcash(event.target.value))}
-                />
-                <Button type="submit" size="touch" className="shrink-0">
-                  {t(lang, "addToRoster")}
-                </Button>
-              </div>
-              {addError ? <p className="text-sm text-destructive">{addError}</p> : null}
-              {live.expenses.length > 0 ? (
-                <ToggleGroup
-                  variant="outline"
-                  spacing={1}
-                  className="flex w-full flex-wrap"
-                  value={[lateComer ? "future" : "past"]}
-                  onValueChange={(next) => {
-                    const picked = next[next.length - 1]
-                    if (picked === "future" || picked === "past") setLateComer(picked === "future")
-                  }}
-                >
-                  <ToggleGroupItem value="future" className="min-h-[40px] flex-1 px-3 text-left">
-                    <SparkleIcon data-icon="inline-start" />
-                    {t(lang, "lateComerFuture")}
-                  </ToggleGroupItem>
-                  <ToggleGroupItem value="past" className="min-h-[40px] flex-1 px-3 text-left">
-                    <RefreshCwIcon data-icon="inline-start" />
-                    {t(lang, "lateComerPast")}
-                  </ToggleGroupItem>
-                </ToggleGroup>
-              ) : null}
-            </form>
-          ) : null}
-
+          <p className="text-sm font-semibold">{t(lang, "friendsList")}</p>
           <ItemGroup>
             {live.members
               .filter((member) => member.id !== hiddenId)
               .map((member) => {
                 const claimed = !!member.claimedByUid
                 const canEdit = treasurer || member.id === as
+                const canRemove = treasurer && member.id !== live.treasurer
+                const displayName = titleCaseName(member.name)
                 return (
                   <Item key={member.id} className="min-h-[56px] items-center">
                     <Avatar size="sm">
-                      <AvatarFallback>{initial(member.name)}</AvatarFallback>
+                      <AvatarFallback>{initial(displayName)}</AvatarFallback>
                     </Avatar>
                     <ItemContent>
                       <ItemTitle className="flex-wrap">
-                        {renameId === member.id ? (
-                          <Input
-                            autoFocus
-                            className="h-8 max-w-[10rem]"
-                            maxLength={40}
-                            value={renameValue}
-                            aria-label={t(lang, "rename")}
-                            onChange={(event) => setRenameValue(event.target.value)}
-                            onBlur={commitRename}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") {
-                                event.preventDefault()
-                                commitRename()
-                              }
-                              if (event.key === "Escape") setRenameId("")
-                            }}
-                          />
-                        ) : (
-                          <span className="inline-flex items-center gap-1">
-                            {member.name}
-                            {canEdit ? (
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="size-8"
-                                aria-label={t(lang, "rename")}
-                                onClick={() => {
-                                  setRenameId(member.id)
-                                  setRenameValue(member.name)
-                                }}
-                              >
-                                <PencilIcon className="size-3.5" />
-                              </Button>
-                            ) : null}
-                          </span>
-                        )}
+                        <span>{displayName}</span>
                         {member.id === live.treasurer ? (
                           <Badge>
                             <CrownIcon className="size-3.5" />
@@ -480,43 +324,6 @@ export function BarkadaView({
                         )}
                         {member.id === as ? <Badge variant="secondary">{t(lang, "you")}</Badge> : null}
                       </ItemTitle>
-                      {gcashId === member.id ? (
-                        <Input
-                          autoFocus
-                          type="tel"
-                          inputMode="tel"
-                          className="mt-1 h-8 max-w-[12rem] font-mono"
-                          maxLength={16}
-                          value={gcashValue}
-                          placeholder="09XX XXX XXXX"
-                          onChange={(event) => setGcashValue(sanitizeGcash(event.target.value))}
-                          onBlur={commitGcash}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") {
-                              event.preventDefault()
-                              commitGcash()
-                            }
-                            if (event.key === "Escape") setGcashId("")
-                          }}
-                        />
-                      ) : (
-                        <ItemDescription>
-                          {canEdit ? (
-                            <button
-                              type="button"
-                              className="font-mono text-left underline-offset-4 hover:underline"
-                              onClick={() => {
-                                setGcashId(member.id)
-                                setGcashValue(member.gcash)
-                              }}
-                            >
-                              {member.gcash || t(lang, "noGcashMember")}
-                            </button>
-                          ) : (
-                            <span className="font-mono">{member.gcash || t(lang, "noGcashMember")}</span>
-                          )}
-                        </ItemDescription>
-                      )}
                     </ItemContent>
                     <ItemActions>
                       {!claimed && liveInvite ? (
@@ -533,38 +340,55 @@ export function BarkadaView({
                           size="touch"
                           variant="ghost"
                           className="min-h-[38px] text-muted-foreground"
-                          onClick={() => onResetLock(member.id, member.name)}
+                          onClick={() => onResetLock(member.id, displayName)}
                         >
                           <UnlockIcon data-icon="inline-start" />
                           {t(lang, "resetLock")}
                         </Button>
                       ) : null}
-                      {treasurer && member.id !== live.treasurer ? (
-                        memberCanRemove(live, member.id) ? (
-                          <ArmButton
-                            variant="ghost"
-                            className="min-h-[38px] text-muted-foreground"
-                            label={<Trash2Icon className="size-4" />}
-                            armedLabel={t(lang, "removeMember") + "?"}
-                            cancelLabel={t(lang, "cancel")}
-                            onConfirm={() => queueRemove(member.id)}
-                          />
-                        ) : (
-                          <Button
-                            size="touch"
-                            variant="ghost"
-                            className="min-h-[38px] text-muted-foreground"
-                            onClick={() => notify(t(lang, "cannotRemove"), 3200)}
-                          >
-                            <Trash2Icon className="size-4" />
-                          </Button>
-                        )
+                      {canEdit || canRemove ? (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="size-9"
+                          aria-label={displayName}
+                          onClick={() => setMenuId(member.id)}
+                        >
+                          <EllipsisVerticalIcon className="size-4" />
+                        </Button>
                       ) : null}
                     </ItemActions>
                   </Item>
                 )
               })}
           </ItemGroup>
+          {treasurer ? (
+            <Button size="touch" variant="outline" className="w-full" onClick={() => openFriend(null)}>
+              {t(lang, "addToRoster")}
+            </Button>
+          ) : null}
+          <MemberSheet
+            open={friendOpen}
+            memberId={friendId}
+            onOpenChange={setFriendOpen}
+          />
+          <FriendActionsSheet
+            member={live.members.find((member) => member.id === menuId) ?? null}
+            canEdit={!!menuId && (treasurer || menuId === as)}
+            canRemove={!!menuId && treasurer && menuId !== live.treasurer}
+            lang={lang}
+            onOpenChange={(next) => {
+              if (!next) setMenuId(null)
+            }}
+            onEdit={(id) => {
+              setMenuId(null)
+              openFriend(id)
+            }}
+            onRemove={(id) => {
+              setMenuId(null)
+              queueRemove(id)
+            }}
+          />
         </section>
       ) : null}
 
@@ -575,6 +399,46 @@ export function BarkadaView({
       {hub === "wrapped" || screenshotMode ? (
         <section className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">{t(lang, "wrappedHint")}</p>
+          {!screenshotMode ? (
+            <>
+              <input
+                ref={wrappedPhotoRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="sr-only"
+                onChange={(event) => {
+                  const files = [...(event.target.files || [])]
+                  event.target.value = ""
+                  void (async () => {
+                    const urls = [...(live.wrappedPhotos || [])]
+                    for (const file of files) {
+                      if (urls.length >= 4) break
+                      try {
+                        urls.push(await compressImage(file))
+                      } catch {
+                        toast.add({ title: t(lang, "photoFailed"), timeout: 1800 })
+                      }
+                    }
+                    setTripPhotos({
+                      wrappedPhotos: urls.slice(0, 4),
+                      coverPhotoUrl: live.coverPhotoUrl || urls[0] || null,
+                    })
+                  })()
+                }}
+              />
+              <Button
+                type="button"
+                size="touch"
+                variant="outline"
+                className="min-h-[40px] w-full"
+                onClick={() => wrappedPhotoRef.current?.click()}
+              >
+                <ImagePlusIcon data-icon="inline-start" />
+                {t(lang, "customizeWrapped")}
+              </Button>
+            </>
+          ) : null}
           <WrappedCard trip={live} now={now} lang={lang} />
           {!screenshotMode ? (
             <div className="grid grid-cols-2 gap-2">
@@ -591,5 +455,45 @@ export function BarkadaView({
         </section>
       ) : null}
     </div>
+  )
+}
+
+function FriendActionsSheet({
+  member,
+  canEdit,
+  canRemove,
+  lang,
+  onOpenChange,
+  onEdit,
+  onRemove,
+}: {
+  member: Member | null
+  canEdit: boolean
+  canRemove: boolean
+  lang: Lang
+  onOpenChange: (open: boolean) => void
+  onEdit: (id: string) => void
+  onRemove: (id: string) => void
+}) {
+  return (
+    <Drawer open={!!member} onOpenChange={onOpenChange} swipeDirection="down" showSwipeHandle>
+      <DrawerContent className="mx-auto">
+        <DrawerHeader>
+          <DrawerTitle>{member ? titleCaseName(member.name) : ""}</DrawerTitle>
+        </DrawerHeader>
+        <div className="flex flex-col gap-2 px-4 py-3 pb-[max(16px,env(safe-area-inset-bottom))]">
+          {member && canEdit ? (
+            <Button size="cta" variant="outline" onClick={() => onEdit(member.id)}>
+              {t(lang, "edit")}
+            </Button>
+          ) : null}
+          {member && canRemove ? (
+            <Button size="cta" variant="destructive" onClick={() => onRemove(member.id)}>
+              {t(lang, "removeMember")}
+            </Button>
+          ) : null}
+        </div>
+      </DrawerContent>
+    </Drawer>
   )
 }

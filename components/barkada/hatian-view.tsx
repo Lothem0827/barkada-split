@@ -19,19 +19,19 @@ import {
 } from "lucide-react"
 
 import { CopyAction } from "@/components/barkada/copy-action"
+import { MascotAvatar, TaliStrip } from "@/components/barkada/tali-strip"
 import { HatianActionSheet } from "@/components/barkada/hatian-action-sheet"
+import { MemberSheet } from "@/components/barkada/sheets"
 import { SulkMeter } from "@/components/barkada/sulk-meter"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
-import { Input } from "@/components/ui/input"
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { balances, dayStr, daysOwed, fmtAgo, fmtDate, peso, plain, potOf, transfers } from "@/lib/calc"
 import { toast } from "@/components/ui/toast"
-import { sanitizeGcash } from "@/lib/gcash"
 import { sulkMeta, t, type CopyKey } from "@/lib/i18n"
 import {
   canConfirmTransfer,
@@ -40,6 +40,7 @@ import {
   canNudgeTransfer,
   hatianViewerRole,
 } from "@/lib/payments"
+import { signTaliNudge } from "@/lib/companion-ai"
 import { reminder } from "@/lib/reminders"
 import { useBarkada } from "@/lib/store"
 import {
@@ -77,14 +78,13 @@ export function HatianView({
   onFocused?: () => void
 }) {
   const store = useBarkada()
-  const { state, trip, now, markPaid, confirmPayment, sendNudge, editMember, saveProfile } = store
+  const { state, trip, now, markPaid, confirmPayment, sendNudge } = store
   const treasurer = trip ? isTreasurer(state, trip) : false
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [cardPersona, setCardPersona] = useState<Record<string, Persona>>({})
   const [hatianScope, setHatianScope] = useState<HatianScope>(treasurer ? "all" : "mine")
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null)
-  const [addingGcashKey, setAddingGcashKey] = useState<string | null>(null)
-  const [gcashDraft, setGcashDraft] = useState("")
+  const [gcashMemberId, setGcashMemberId] = useState<string | null>(null)
   const [payBusy, setPayBusy] = useState(false)
   const payBusyRef = useRef(false)
   const cardRefs = useRef<Record<string, HTMLElement | null>>({})
@@ -120,7 +120,7 @@ export function HatianView({
   }, [focusKey, onFocused, state.as])
 
   if (!trip) return null
-  const { lang, as, persona, profile } = state
+  const { lang, as, persona } = state
   const bals = balances(trip)
   const list = transfers(trip)
   const mine = list.filter((row) => row.from === as || row.to === as)
@@ -169,7 +169,8 @@ export function HatianView({
         <span className="text-sm text-muted-foreground">{t(lang, "plusOwed")}</span>
       </div>
       <Card>
-        <CardContent>
+        <CardContent className="flex flex-col gap-3">
+          <TaliStrip trip={trip} viewerId={as} activeTab="hatian" now={now} lang={lang} />
           <ItemGroup>
             {members.map((member) => {
               const value = bals[member.id]
@@ -263,7 +264,7 @@ export function HatianView({
           const number = gcashOf(trip, row.to)
           const tone = personaOf(key)
           const fromTreasurer = role === "treasurer_overseeing"
-          const preview = reminder(trip, row, tone, lang, now, { fromTreasurer })
+          const preview = signTaliNudge(reminder(trip, row, tone, "tl", now, { fromTreasurer }))
           const nudgeLocked =
             !!pending || hasCooldownNudge(trip.nudges, row.from, row.to, trip.treasurer, now)
           const incoming = newestUnreadPairNudge(trip.nudges, row.from, row.to, trip.treasurer)
@@ -362,48 +363,14 @@ export function HatianView({
                   </>
                 ) : null}
                 {role === "creditor" && !number ? (
-                  addingGcashKey === key ? (
-                    <div className="flex gap-2">
-                      <Input
-                        autoFocus
-                        type="tel"
-                        inputMode="tel"
-                        className="font-mono"
-                        maxLength={16}
-                        value={gcashDraft}
-                        placeholder="09XX XXX XXXX"
-                        onChange={(event) => setGcashDraft(sanitizeGcash(event.target.value))}
-                      />
-                      <Button
-                        size="touch"
-                        onClick={() => {
-                          const result = editMember(row.to, toName, gcashDraft)
-                          if (!result.ok) {
-                            toast.add({ title: result.message, timeout: 1800 })
-                            return
-                          }
-                          saveProfile({ ...profile, persona, gcash: sanitizeGcash(gcashDraft) })
-                          setAddingGcashKey(null)
-                          setGcashDraft("")
-                          toast.add({ title: result.message, timeout: 1800 })
-                        }}
-                      >
-                        {t(lang, "save")}
-                      </Button>
-                    </div>
-                  ) : (
-                    <Button
-                      size="touch"
-                      className="w-full"
-                      onClick={() => {
-                        setAddingGcashKey(key)
-                        setGcashDraft(profile.gcash)
-                      }}
-                    >
-                      <PlusIcon data-icon="inline-start" />
-                      {t(lang, "addMyGcash")}
-                    </Button>
-                  )
+                  <Button
+                    size="touch"
+                    className="w-full"
+                    onClick={() => setGcashMemberId(row.to)}
+                  >
+                    <PlusIcon data-icon="inline-start" />
+                    {t(lang, "addMyGcash")}
+                  </Button>
                 ) : null}
                 {role === "debtor" && pending ? (
                   <Badge variant="secondary" className="w-fit whitespace-normal">
@@ -587,6 +554,13 @@ export function HatianView({
           if (!next) setSelectedPaymentId(null)
         }}
       />
+      <MemberSheet
+        open={!!gcashMemberId}
+        memberId={gcashMemberId}
+        onOpenChange={(open) => {
+          if (!open) setGcashMemberId(null)
+        }}
+      />
     </div>
   )
 }
@@ -640,19 +614,22 @@ function NudgeComposer({
           <Badge variant="secondary">{t(lang, "seenZoner").replace("{n}", String(seenCount))}</Badge>
         ) : null}
       </div>
-      <div className="flex flex-wrap gap-1.5">
-        {PERSONAS.map((item) => (
-          <Button
-            key={item.id}
-            type="button"
-            size="xs"
-            variant={tone === item.id ? "default" : "outline"}
-            className="min-h-[34px] rounded-full px-2.5 text-xs font-bold"
-            onClick={() => onTone(item.id)}
-          >
-            {t(lang, PERSONA_COPY[item.id])}
-          </Button>
-        ))}
+      <div className="flex flex-wrap items-center gap-2">
+        <MascotAvatar />
+        <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+          {PERSONAS.map((item) => (
+            <Button
+              key={item.id}
+              type="button"
+              size="xs"
+              variant={tone === item.id ? "default" : "outline"}
+              className="min-h-[34px] rounded-full px-2.5 text-xs font-bold"
+              onClick={() => onTone(item.id)}
+            >
+              {t(lang, PERSONA_COPY[item.id])}
+            </Button>
+          ))}
+        </div>
       </div>
       <p className="rounded-lg border bg-muted/40 p-3 text-sm whitespace-pre-wrap wrap-break-word">{preview}</p>
       <div className="mt-2 grid grid-cols-2 gap-2">
@@ -668,7 +645,7 @@ function NudgeComposer({
             ? t(lang, "nudgedPending")
             : fromTreasurer
               ? t(lang, "nudgeFor").replace("{from}", fromName).replace("{to}", toName)
-              : t(lang, "nudgeInApp").replace("{name}", fromName)}
+              : t(lang, "taliNudge")}
         </Button>
         <CopyAction
           variant="secondary"

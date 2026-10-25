@@ -8,8 +8,25 @@ export const MAX_FRIEND_NAMES = 59
 const SEPARATOR = /[,;\n\r]+|\s+&\s+/
 const HAS_SEPARATOR = /[,;\n\r]|\s+&\s+/
 
+function titleCaseWord(word: string) {
+  const chars = [...word]
+  const first = chars.findIndex((ch) => /\p{L}/u.test(ch))
+  if (first < 0) return word
+  return chars
+    .map((ch, i) => {
+      if (i === first) return ch.toLocaleUpperCase()
+      return /\p{L}/u.test(ch) ? ch.toLocaleLowerCase() : ch
+    })
+    .join("")
+}
+
 export function sanitizeName(value: string) {
-  return value.replace(/[<>]/g, "").trim().replace(/\s+/g, " ").slice(0, MEMBER_NAME_MAX)
+  return value
+    .replace(/[<>]/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, MEMBER_NAME_MAX)
+    .replace(/\S+/g, titleCaseWord)
 }
 
 export const titleCaseName = sanitizeName

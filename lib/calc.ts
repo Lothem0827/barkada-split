@@ -158,20 +158,20 @@ export function draftErrorMessage(errs: string[], lang: Lang) {
   if (first?.startsWith("item-decimals-")) {
     return tl
       ? "Hanggang 2 decimal places lang (centavos, e.g. ₱12.50)"
-      : "Hanggang 2 decimal places lang (centavos, e.g. ₱12.50)"
+      : "Up to 2 decimal places (centavos, e.g. ₱12.50)"
   }
   if (first?.startsWith("item-price-")) {
     return tl
       ? "Maglagay ng halagang mas mataas sa ₱0.00"
-      : "Maglagay ng halagang mas mataas sa ₱0.00"
+      : "Enter an amount higher than ₱0.00"
   }
   if (first?.startsWith("item-eaters-")) {
     return tl
       ? "Item " + (Number(first.slice(12)) + 1) + ": sino ang kumain?"
       : "Item " + (Number(first.slice(12)) + 1) + ": who ate this?"
   }
-  if (first === "decimals") return tl ? "Hanggang 2 decimal places lang (centavos, e.g. ₱12.50)" : "Hanggang 2 decimal places lang (centavos, e.g. ₱12.50)"
-  if (first === "amount") return tl ? "Maglagay ng halagang mas mataas sa ₱0.00" : "Maglagay ng halagang mas mataas sa ₱0.00"
+  if (first === "decimals") return tl ? "Hanggang 2 decimal places lang (centavos, e.g. ₱12.50)" : "Up to 2 decimal places (centavos, e.g. ₱12.50)"
+  if (first === "amount") return tl ? "Maglagay ng halagang mas mataas sa ₱0.00" : "Enter an amount higher than ₱0.00"
   if (first === "ex") return tl ? "Sino ang hindi kasama?" : "Who is left out?"
   if (first === "ex-all") return tl ? "Hindi puwedeng lahat excluded." : "Someone has to split this."
   if (first === "too-big") return tl ? "Masyadong malaki ang amount." : "That amount is too large."

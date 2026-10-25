@@ -1,9 +1,10 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { BanknoteIcon, PlusIcon, XIcon } from "lucide-react"
+import { BanknoteIcon, ImagePlusIcon, PlusIcon, XIcon } from "lucide-react"
 
 import { AmountBumpers } from "@/components/barkada/amount-bumpers"
+import { MascotAvatar } from "@/components/barkada/tali-strip"
 import { MemberChipRow } from "@/components/barkada/member-chip-row"
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -29,6 +30,8 @@ import { Switch } from "@/components/ui/switch"
 import { Toggle } from "@/components/ui/toggle"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { draftToExpense, parsePeso, peso, plain, sharesOf, totalOf } from "@/lib/calc"
+import { compressImage } from "@/lib/image-utils"
+import { getExpenseReaction } from "@/lib/companion-ai"
 import { toast } from "@/components/ui/toast"
 import { t, type CopyKey } from "@/lib/i18n"
 import { useBarkada } from "@/lib/store"
@@ -61,7 +64,9 @@ export function ExpenseSheet({
   const { state, trip, addExpense, editExpense } = useBarkada()
   const [error, setError] = useState("")
   const [saving, setSaving] = useState(false)
+  const [photoBusy, setPhotoBusy] = useState(false)
   const savingRef = useRef(false)
+  const photoRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (open) return
@@ -77,7 +82,7 @@ export function ExpenseSheet({
   if (!trip || !draft) {
     return (
       <Drawer open={open} onOpenChange={onOpenChange} swipeDirection="down" showSwipeHandle>
-        <DrawerContent className="mx-auto max-w-[560px]">
+        <DrawerContent className="mx-auto">
           <DrawerHeader>
             <DrawerTitle>{t(state.lang, "add")}</DrawerTitle>
           </DrawerHeader>
@@ -115,6 +120,18 @@ export function ExpenseSheet({
     onOpenChange(false)
   }
 
+  async function pickPhoto(file: File | undefined) {
+    if (!file) return
+    setPhotoBusy(true)
+    try {
+      patch({ photoUrl: await compressImage(file), photoType: liveDraft.photoType || "memory" })
+    } catch {
+      toast.add({ title: t(lang, "photoFailed"), timeout: 1800 })
+    } finally {
+      setPhotoBusy(false)
+    }
+  }
+
   function splitRemainder() {
     if (!(remainder > 0)) return
     patch({
@@ -138,10 +155,17 @@ export function ExpenseSheet({
             .replace("{free}", free.map((member) => member.name).join(", "))
         : t(lang, "patakHead").replace("{amt}", peso(head)).replace("{n}", String(kasali.length))
       : ""
+  const taliReact = getExpenseReaction({
+    amount: parsed.e.amount,
+    method: draft.method,
+    excludedNames: free.map((member) => member.name),
+    head,
+    payingCount: kasali.length,
+  })
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} swipeDirection="down" showSwipeHandle>
-      <DrawerContent className="mx-auto max-w-[560px]">
+      <DrawerContent className="mx-auto">
         <DrawerHeader>
           <DrawerTitle>{draft.id ? t(lang, "edit") : t(lang, "add")}</DrawerTitle>
           <DrawerDescription>
@@ -261,7 +285,7 @@ export function ExpenseSheet({
                   {draft.items.map((item, index) => {
                     const allOn = item.eaters.length === trip.members.length
                     return (
-                      <div key={index} className="flex flex-col gap-2 rounded-xl border p-3">
+                      <div key={index} className="flex flex-col gap-2 rounded-xl bg-card p-3">
                         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_110px_auto] gap-2">
                           <div className="min-w-0">
                             <Input
@@ -368,6 +392,59 @@ export function ExpenseSheet({
                 <Switch id="d-sc" checked={draft.sc} onCheckedChange={(checked) => patch({ sc: checked })} />
                 <FieldLabel htmlFor="d-sc">{t(lang, "sc")}</FieldLabel>
               </Field>
+              <Field>
+                <input
+                  ref={photoRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="sr-only"
+                  onChange={(event) => {
+                    void pickPhoto(event.target.files?.[0])
+                    event.target.value = ""
+                  }}
+                />
+                {draft.photoUrl ? (
+                  <div className="flex items-start gap-2">
+                    <img src={draft.photoUrl} alt="" className="size-[72px] rounded-lg object-cover" />
+                    <div className="flex min-w-0 flex-1 flex-col gap-2">
+                      <ToggleGroup
+                        variant="outline"
+                        spacing={1}
+                        className="flex w-full"
+                        value={[draft.photoType === "receipt" ? "receipt" : "memory"]}
+                        onValueChange={(next) => {
+                          const picked = next[next.length - 1]
+                          if (picked === "memory" || picked === "receipt") patch({ photoType: picked })
+                        }}
+                      >
+                        <ToggleGroupItem value="memory" className="min-h-[40px] flex-1 px-2 text-xs">
+                          {t(lang, "memoryPhoto")}
+                        </ToggleGroupItem>
+                        <ToggleGroupItem value="receipt" className="min-h-[40px] flex-1 px-2 text-xs">
+                          {t(lang, "receiptPhoto")}
+                        </ToggleGroupItem>
+                      </ToggleGroup>
+                      <Button type="button" size="xs" variant="ghost" onClick={() => patch({ photoUrl: "", photoType: "memory" })}>
+                        <XIcon data-icon="inline-start" />
+                        {t(lang, "removePhoto")}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    size="touch"
+                    variant="outline"
+                    className="min-h-[44px]"
+                    disabled={photoBusy}
+                    onClick={() => photoRef.current?.click()}
+                  >
+                    <ImagePlusIcon data-icon="inline-start" />
+                    {t(lang, "addPhoto")}
+                  </Button>
+                )}
+              </Field>
               {draft.id ? (
                 <Field>
                   <FieldLabel htmlFor="f-note">{t(lang, "audit")}</FieldLabel>
@@ -440,6 +517,14 @@ export function ExpenseSheet({
                 <BanknoteIcon className="mr-1 inline size-3.5 align-[-2px]" />
                 {patak}
               </p>
+            ) : null}
+            {taliReact ? (
+              <div className="flex items-center gap-2.5 rounded-xl bg-card/80 p-2.5">
+                <MascotAvatar />
+                <p key={taliReact.message} className="min-w-0 flex-1 text-sm leading-snug wrap-break-word animate-in fade-in-0">
+                  {taliReact.message}
+                </p>
+              </div>
             ) : null}
             <p className="text-center text-xs text-muted-foreground">
               {willPend

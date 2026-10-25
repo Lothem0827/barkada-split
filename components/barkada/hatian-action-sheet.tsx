@@ -53,7 +53,7 @@ export function HatianActionSheet({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} swipeDirection="down" showSwipeHandle>
-      <DrawerContent className="mx-auto min-h-[52vh] max-w-[560px]">
+      <DrawerContent className="mx-auto min-h-[52vh]">
         <DrawerHeader>
           <DrawerTitle>{t(lang, "hatianPaySheetTitle")}</DrawerTitle>
           <DrawerDescription>

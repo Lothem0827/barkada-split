@@ -4,6 +4,7 @@ import * as React from "react"
 import { Toggle as TogglePrimitive } from "@base-ui/react/toggle"
 import { ToggleGroup as ToggleGroupPrimitive } from "@base-ui/react/toggle-group"
 import { type VariantProps } from "class-variance-authority"
+import { CheckIcon } from "lucide-react"
 import { cn } from "cn"
 
 import { toggleVariants } from "@/components/ui/toggle"
@@ -81,6 +82,7 @@ function ToggleGroupItem({
       )}
       {...props}
     >
+      <CheckIcon className="hidden size-3.5 group-aria-pressed/toggle:block group-data-pressed/toggle:block" />
       {children}
     </TogglePrimitive>
   )

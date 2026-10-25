@@ -1,9 +1,9 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
-  ArrowLeftIcon,
   ArrowLeftRightIcon,
   CrownIcon,
   HouseIcon,
@@ -32,17 +32,15 @@ import {
   TripSheet,
 } from "@/components/barkada/sheets"
 import { WrappedCard } from "@/components/barkada/wrapped-card"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer"
 import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/toast"
@@ -62,8 +60,7 @@ import {
   type Tab,
 } from "@/lib/types"
 
-const TABS: { id: Tab; icon: typeof HouseIcon; key: "home" | "gastos" | "hatian" | "barkada" }[] = [
-  { id: "home", icon: HouseIcon, key: "home" },
+const TABS: { id: Tab; icon: typeof HouseIcon; key: "gastos" | "hatian" | "barkada" }[] = [
   { id: "gastos", icon: ReceiptIcon, key: "gastos" },
   { id: "hatian", icon: ArrowLeftRightIcon, key: "hatian" },
   { id: "barkada", icon: UsersIcon, key: "barkada" },
@@ -204,7 +201,7 @@ function AppFrame() {
         <div
           className={`flex w-full max-w-full flex-col justify-center overflow-hidden bg-muted/40 ${shotRatio === "45" ? "aspect-[4/5] px-[7%] py-[4%]" : "aspect-[9/16] px-[6%] py-[7%]"}`}
         >
-          <WrappedCard trip={trip} now={store.now} lang={lang} />
+          <WrappedCard trip={trip} now={store.now} lang={lang} interactive={false} />
         </div>
         <div className="flex flex-wrap justify-center gap-2">
           <Button
@@ -230,34 +227,40 @@ function AppFrame() {
   }
 
   return (
-    <div className="min-h-dvh overflow-x-hidden bg-muted">
+    <div className="min-h-dvh overflow-x-hidden bg-background">
       <Tabs
         value={tab}
         onValueChange={(value) => store.setTab(value as Tab)}
-        className="mx-auto min-h-dvh w-full max-w-[560px] gap-0 bg-background pb-16"
+        className={`min-h-dvh w-full gap-0 bg-background ${tab === "home" || !trip ? "" : "pb-16"}`}
       >
         {tab === "home" || !trip ? (
           <header className="flex items-start justify-between gap-3 border-b px-4 pt-[max(12px,env(safe-area-inset-top))] pb-4">
             <div className="min-w-0">
-              <h1 className="font-heading text-3xl font-extrabold tracking-tight">Barkada Split</h1>
-              <p className="text-sm text-muted-foreground">{t(lang, "brandTag")}</p>
+              <h1 className="font-heading text-2xl font-extrabold tracking-tight wrap-break-word">
+                {t(lang, "homeHello").replace(
+                  "{name}",
+                  state.profile.name.trim() ||
+                    state.lakads.flatMap((item) => item.members).find((member) => member.id === as)?.name ||
+                    t(lang, "homeFriend")
+                )}
+              </h1>
+              <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+                <HouseIcon className="size-3" />
+                {t(lang, "home")}
+              </p>
             </div>
             <ProfilePill onClick={() => setProfileOpen(true)} />
           </header>
         ) : (
           <header className="flex items-start gap-2 border-b px-4 pt-[max(12px,env(safe-area-inset-top))] pb-3">
-            <Button
-              variant="outline"
-              size="icon"
-              className="size-10 shrink-0 rounded-xl"
-              aria-label={t(lang, "back")}
-              onClick={() => {
-                store.goHome()
-                router.push("/")
-              }}
+            <Link
+              href="/"
+              aria-label={t(lang, "home")}
+              className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl border bg-muted px-2.5 text-sm font-medium"
             >
-              <ArrowLeftIcon />
-            </Button>
+              <HouseIcon className="size-4" />
+              {t(lang, "home")}
+            </Link>
             <div className="min-w-0 flex-1">
               <h1 className="line-clamp-2 text-base leading-tight font-extrabold text-foreground sm:text-lg">
                 {trip.name}
@@ -383,31 +386,27 @@ function AppFrame() {
           </TabsContent>
         </main>
 
-        <TabsList
-          variant="line"
-          className="fixed bottom-0 left-1/2 z-30 grid h-auto! w-full max-w-[560px] -translate-x-1/2 grid-cols-4 rounded-none border-t bg-background select-none pb-[max(12px,env(safe-area-inset-bottom))]"
-        >
-          {TABS.map((item) => {
-            const Icon = item.icon
-            const disabled = !trip && item.id !== "home"
-            return (
-              <TabsTrigger
-                key={item.id}
-                value={item.id}
-                disabled={disabled}
-                className="h-auto min-h-12 flex-col gap-0 py-1"
-              >
-                <span className="relative">
-                  <Icon />
-                  {item.id === "barkada" && unreadBarkada > 0 ? (
-                    <span className="absolute -top-0.5 -right-1 size-2 animate-pulse rounded-full bg-destructive" />
-                  ) : null}
-                </span>
-                {t(lang, item.key)}
-              </TabsTrigger>
-            )
-          })}
-        </TabsList>
+        {trip && tab !== "home" ? (
+          <TabsList
+            variant="line"
+            className="fixed bottom-0 inset-x-0 z-30 grid h-auto! w-full grid-cols-3 rounded-none border-t bg-background select-none pb-[max(12px,env(safe-area-inset-bottom))]"
+          >
+            {TABS.map((item) => {
+              const Icon = item.icon
+              return (
+                <TabsTrigger key={item.id} value={item.id} className="h-auto min-h-12 flex-col gap-0 py-1">
+                  <span className="relative">
+                    <Icon />
+                    {item.id === "barkada" && unreadBarkada > 0 ? (
+                      <span className="absolute -top-0.5 -right-1 size-2 animate-pulse rounded-full bg-destructive" />
+                    ) : null}
+                  </span>
+                  {t(lang, item.key)}
+                </TabsTrigger>
+              )
+            })}
+          </TabsList>
+        ) : null}
       </Tabs>
 
       {trip && tab !== "home" ? (
@@ -463,35 +462,39 @@ function AppFrame() {
       ) : null}
       {copyOpen ? <CopySheet key="copy" open text={copyValue} onOpenChange={setCopyOpen} /> : null}
 
-      <AlertDialog
+      <Drawer
         open={dialogOpen}
         onOpenChange={(open) => {
           if (!open) setDialogOpen(false)
         }}
+        swipeDirection="down"
+        showSwipeHandle
       >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
+        <DrawerContent className="mx-auto">
+          <DrawerHeader>
+            <DrawerTitle>
               {confirm?.kind === "delete" ? t(lang, "deleteAsk") : t(lang, "resetLockAsk")}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
+            </DrawerTitle>
+            <DrawerDescription>
               {confirm?.kind === "delete"
                 ? t(lang, "deleteBody")
                 : t(lang, "resetLockBody").replace("{name}", confirm?.name ?? "")}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="min-h-[50px]">{t(lang, "cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              className="min-h-[50px]"
+            </DrawerDescription>
+          </DrawerHeader>
+          <DrawerFooter>
+            <Button
+              size="cta"
               variant={confirm?.kind === "delete" ? "destructive" : "default"}
               onClick={runConfirm}
             >
               {confirm?.kind === "delete" ? t(lang, "del") : t(lang, "save")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </Button>
+            <Button size="cta" variant="outline" onClick={() => setDialogOpen(false)}>
+              {t(lang, "cancel")}
+            </Button>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
     </div>
   )
 }

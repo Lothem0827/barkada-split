@@ -31,9 +31,9 @@ export default function OpenGraphImage() {
             background: "linear-gradient(160deg, #1a6b4a 0%, #0f3d2e 100%)",
           }}
         >
-          <div style={{ fontSize: 36, letterSpacing: 6 }}>BARKADA SPLIT</div>
-          <div style={{ fontSize: 72, fontWeight: 700, lineHeight: 1.1 }}>Join the lakad.</div>
-          <div style={{ fontSize: 32 }}>Walang kalimutan ng ambagan.</div>
+          <div style={{ fontSize: 36, letterSpacing: 6 }}>TALLY</div>
+          <div style={{ fontSize: 72, fontWeight: 700, lineHeight: 1.1 }}>Join the trip.</div>
+          <div style={{ fontSize: 32 }}>Don't forget who owes what.</div>
         </div>
       </div>
     ),

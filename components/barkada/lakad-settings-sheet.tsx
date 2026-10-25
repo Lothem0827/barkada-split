@@ -2,17 +2,11 @@
 
 import { useEffect, useState } from "react"
 import {
-  CoinsIcon,
   CrownIcon,
-  LockIcon,
-  ScrollTextIcon,
   SettingsIcon,
   SirenIcon,
-  TagIcon,
   Trash2Icon,
   TriangleAlertIcon,
-  UnlockIcon,
-  UsersIcon,
   XIcon,
 } from "lucide-react"
 
@@ -21,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer"
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { toast } from "@/components/ui/toast"
 import { t } from "@/lib/i18n"
@@ -84,7 +79,7 @@ export function LakadSettingsSheet({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} swipeDirection="down" showSwipeHandle>
-      <DrawerContent className="mx-auto max-w-[560px]">
+      <DrawerContent className="mx-auto">
         <DrawerHeader>
           <div className="flex items-start justify-between gap-2 text-left">
             <DrawerTitle className="flex items-start gap-2 wrap-break-word pr-2">
@@ -103,118 +98,99 @@ export function LakadSettingsSheet({
           </div>
         </DrawerHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-4 py-3 pb-[max(16px,env(safe-area-inset-bottom))]">
-          <section className="flex flex-col gap-3">
-            <h3 className="font-heading inline-flex items-center gap-1.5 text-sm font-semibold">
-              <TagIcon className="size-4" />
+          <section className="flex flex-col gap-2">
+            <label htmlFor="t-lakad-name" className="text-sm text-muted-foreground">
               {t(lang, "tripName")}
-            </h3>
-            <Field>
-              <FieldLabel htmlFor="t-lakad-name">{t(lang, "tripName")}</FieldLabel>
-              <Input
-                id="t-lakad-name"
-                maxLength={80}
-                value={lakadName}
-                onChange={(event) => setLakadName(event.target.value)}
-                onBlur={commitName}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault()
-                    commitName()
-                  }
+            </label>
+            <div className="overflow-hidden rounded-2xl bg-muted">
+              <div className="px-4 py-3">
+                <Input
+                  id="t-lakad-name"
+                  maxLength={80}
+                  value={lakadName}
+                  onChange={(event) => setLakadName(event.target.value)}
+                  onBlur={commitName}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault()
+                      commitName()
+                    }
+                  }}
+                />
+              </div>
+              <button
+                type="button"
+                className="w-full border-t border-border/60 px-4 py-3 text-left text-sm text-muted-foreground"
+                onClick={() => {
+                  onOpenChange(false)
+                  setTab("barkada")
                 }}
-              />
-            </Field>
-            <button
-              type="button"
-              className="text-left text-sm text-muted-foreground underline-offset-4 hover:underline"
-              onClick={() => {
-                onOpenChange(false)
-                setTab("barkada")
-              }}
-            >
-              <span className="inline-flex items-center gap-1">
-                <UsersIcon className="size-3.5" />
+              >
                 {t(lang, "goToRoster")}
-              </span>
-            </button>
+              </button>
+            </div>
           </section>
 
           {treasurer ? (
-            <section className="flex flex-col gap-3">
-              <h3 className="font-heading inline-flex items-center gap-1.5 text-sm font-semibold">
-                <LockIcon className="size-4" />
-                {t(lang, "approvalSection")}
-              </h3>
-              <ToggleGroup
-                variant="outline"
-                spacing={1}
-                orientation="vertical"
-                className="flex w-full flex-col"
-                value={[live.open ? "open" : "locked"]}
-                onValueChange={(next) => {
-                  const picked = next[next.length - 1]
-                  if (picked === "open" || picked === "locked") {
-                    const result = setOpen(picked === "open")
-                    notify(result.message)
-                  }
-                }}
-              >
-                <ToggleGroupItem value="open" className="min-h-[44px] w-full justify-start px-3.5 text-left">
-                  <UnlockIcon data-icon="inline-start" />
-                  {t(lang, "openModePill")}
-                </ToggleGroupItem>
-                <ToggleGroupItem value="locked" className="min-h-[44px] w-full justify-start px-3.5 text-left">
-                  <LockIcon data-icon="inline-start" />
-                  {t(lang, "treasApprovalMode")}
-                </ToggleGroupItem>
-              </ToggleGroup>
+            <section className="flex flex-col gap-2">
+              <p className="text-sm text-muted-foreground">{t(lang, "approvalSection")}</p>
+              <div className="rounded-2xl bg-muted px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">{t(lang, "openModeOn")}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t(lang, live.open ? "openOn" : "openOff")}
+                    </p>
+                  </div>
+                  <Switch
+                    checked={live.open}
+                    onCheckedChange={(checked) => {
+                      const result = setOpen(checked)
+                      notify(result.message)
+                    }}
+                  />
+                </div>
+              </div>
             </section>
           ) : null}
 
           {treasurer ? (
-            <section className="flex flex-col gap-3">
-              <h3 className="font-heading inline-flex items-center gap-1.5 text-sm font-semibold">
-                <CoinsIcon className="size-4" />
-                {t(lang, "barya")}
-              </h3>
-              <ToggleGroup
-                variant="outline"
-                spacing={1}
-                className="flex-wrap"
-                value={[String(live.roundTo || 0)]}
-                onValueChange={(next) => {
-                  const picked = next[next.length - 1]
-                  if (picked === "0" || picked === "100" || picked === "500") {
-                    const result = setRoundTo(Number(picked) as RoundTo)
-                    notify(result.message)
-                  }
-                }}
-              >
-                <ToggleGroupItem value="0" className="min-h-[40px] px-3.5">
-                  {t(lang, "round0")}
-                </ToggleGroupItem>
-                <ToggleGroupItem value="100" className="min-h-[40px] px-3.5">
-                  {t(lang, "round1")}
-                </ToggleGroupItem>
-                <ToggleGroupItem value="500" className="min-h-[40px] px-3.5">
-                  {t(lang, "round5")}
-                </ToggleGroupItem>
-              </ToggleGroup>
-              <p className="text-sm text-muted-foreground">{t(lang, "butalRoundHint")}</p>
+            <section className="flex flex-col gap-2">
+              <p className="text-sm text-muted-foreground">{t(lang, "barya")}</p>
+              <div className="rounded-2xl bg-muted px-4 py-3">
+                <ToggleGroup
+                  variant="outline"
+                  spacing={1}
+                  className="flex-wrap"
+                  value={[String(live.roundTo || 0)]}
+                  onValueChange={(next) => {
+                    const picked = next[next.length - 1]
+                    if (picked === "0" || picked === "100" || picked === "500") {
+                      const result = setRoundTo(Number(picked) as RoundTo)
+                      notify(result.message)
+                    }
+                  }}
+                >
+                  <ToggleGroupItem value="0" className="min-h-[40px] px-3.5">
+                    {t(lang, "round0")}
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="100" className="min-h-[40px] px-3.5">
+                    {t(lang, "round1")}
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="500" className="min-h-[40px] px-3.5">
+                    {t(lang, "round5")}
+                  </ToggleGroupItem>
+                </ToggleGroup>
+                <p className="mt-2 text-xs text-muted-foreground">{t(lang, "butalRoundHint")}</p>
+              </div>
             </section>
           ) : null}
 
-          <section className="flex flex-col gap-3">
-            <h3 className="font-heading inline-flex items-center gap-1.5 text-sm font-semibold">
-              <CrownIcon className="size-4" />
-              {t(lang, "dangerSection")}
-            </h3>
-            {treasurer && others.length ? (
-              <Field>
-                <FieldLabel className="inline-flex items-center gap-1.5">
-                  <CrownIcon className="size-3.5" />
-                  {t(lang, "handoff")}
-                </FieldLabel>
+          {treasurer && others.length ? (
+            <section className="flex flex-col gap-2">
+              <p className="text-sm text-muted-foreground">{t(lang, "dangerSection")}</p>
+              <div className="rounded-2xl bg-muted px-4 py-3">
+                <p className="mb-2 text-sm font-medium">{t(lang, "handoff")}</p>
                 <div className="flex flex-wrap gap-2">
                   {others.map((member) => (
                     <Button
@@ -232,7 +208,7 @@ export function LakadSettingsSheet({
                   ))}
                 </div>
                 {pending ? (
-                  <div className="mt-2 rounded-xl border bg-card p-3">
+                  <div className="mt-3">
                     <p className="text-sm">{t(lang, "crownPassAsk").replace("{name}", pending.name)}</p>
                     <div className="mt-2 grid grid-cols-2 gap-2">
                       <Button
@@ -256,14 +232,17 @@ export function LakadSettingsSheet({
                     </div>
                   </div>
                 ) : null}
-              </Field>
-            ) : null}
+              </div>
+            </section>
+          ) : null}
 
-            {!treasurer && takeoverCandidates.length ? (
-              <div className="flex flex-col gap-2">
+          {!treasurer && takeoverCandidates.length ? (
+            <section className="flex flex-col gap-2">
+              <p className="text-sm text-muted-foreground">{t(lang, "dangerSection")}</p>
+              <div className="overflow-hidden rounded-2xl bg-muted">
                 <button
                   type="button"
-                  className="text-left text-xs font-semibold text-destructive"
+                  className="flex w-full items-center gap-1 px-4 py-3 text-left text-sm font-medium text-destructive"
                   onClick={() => {
                     setTakeoverOpen((next) => !next)
                     setTakeoverError("")
@@ -272,14 +251,12 @@ export function LakadSettingsSheet({
                     }
                   }}
                 >
-                  <span className="inline-flex items-center gap-1">
-                    <TriangleAlertIcon className="size-3.5" />
-                    {t(lang, "emergencyTakeoverBtn")}
-                  </span>
+                  <TriangleAlertIcon className="size-3.5" />
+                  {t(lang, "emergencyTakeoverBtn")}
                 </button>
                 {takeoverOpen ? (
-                  <div className="flex flex-col gap-3 rounded-xl border border-destructive/30 bg-card p-3">
-                    <p className="text-sm text-muted-foreground">
+                  <div className="flex flex-col gap-3 border-t border-border/60 px-4 py-3">
+                    <p className="text-xs text-muted-foreground">
                       {t(lang, "emergencyTakeoverWarn").replace("{name}", treasName)}
                     </p>
                     <FieldGroup>
@@ -346,9 +323,11 @@ export function LakadSettingsSheet({
                   </div>
                 ) : null}
               </div>
-            ) : null}
+            </section>
+          ) : null}
 
-            {treasurer ? (
+          {treasurer ? (
+            <div className="overflow-hidden rounded-2xl bg-muted">
               <ArmButton
                 variant="destructive"
                 className="w-full"
@@ -362,30 +341,28 @@ export function LakadSettingsSheet({
                 cancelLabel={t(lang, "cancel")}
                 onConfirm={onDeleteTrip}
               />
-            ) : null}
-          </section>
+            </div>
+          ) : null}
 
           {emergencyLog.length ? (
-            <details className="rounded-xl border bg-card p-3">
-              <summary className="cursor-pointer font-heading text-sm font-semibold">
-                <span className="inline-flex items-center gap-1.5">
-                  <ScrollTextIcon className="size-4" />
-                  {t(lang, "emergencyHistory")}
-                </span>
-              </summary>
-              <ul className="mt-3 flex flex-col gap-3">
-                {[...emergencyLog]
-                  .sort((a, b) => b.ts - a.ts)
-                  .map((entry) => (
-                    <li key={entry.id} className="flex flex-col gap-0.5 border-t pt-2 first:border-t-0 first:pt-0">
-                      <p className="text-sm font-medium">{emergencyActionLabel(lang, entry.action)}</p>
-                      <p className="text-sm text-muted-foreground">{entry.actorName}</p>
-                      {entry.details ? <p className="text-sm text-muted-foreground">{entry.details}</p> : null}
-                      <p className="text-xs text-muted-foreground">{formatEmergencyTime(entry.ts)}</p>
-                    </li>
-                  ))}
-              </ul>
-            </details>
+            <section className="flex flex-col gap-2">
+              <p className="text-sm text-muted-foreground">{t(lang, "emergencyHistory")}</p>
+              <details className="rounded-2xl bg-muted px-4 py-3">
+                <summary className="cursor-pointer text-sm font-medium">{t(lang, "emergencyHistory")}</summary>
+                <ul className="mt-3 flex flex-col gap-3">
+                  {[...emergencyLog]
+                    .sort((a, b) => b.ts - a.ts)
+                    .map((entry) => (
+                      <li key={entry.id} className="flex flex-col gap-0.5 border-t border-border/60 pt-2 first:border-t-0 first:pt-0">
+                        <p className="text-sm font-medium">{emergencyActionLabel(lang, entry.action)}</p>
+                        <p className="text-xs text-muted-foreground">{entry.actorName}</p>
+                        {entry.details ? <p className="text-xs text-muted-foreground">{entry.details}</p> : null}
+                        <p className="text-xs text-muted-foreground">{formatEmergencyTime(entry.ts)}</p>
+                      </li>
+                    ))}
+                </ul>
+              </details>
+            </section>
           ) : null}
         </div>
       </DrawerContent>

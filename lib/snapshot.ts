@@ -1,3 +1,4 @@
+import { isKeepablePhotoUrl } from "@/lib/image-utils"
 import { joinCodeFromId, normalizeJoinCode } from "@/lib/join-code"
 import {
   ACTIVITY_LOG_CAP,
@@ -31,8 +32,27 @@ function b64d(text: string) {
   return Buffer.from(text, "base64").toString("binary")
 }
 
+function stripHeavyPhotos(trip: Trip): Trip {
+  const keep = (url?: string | null) => url && !url.startsWith("data:") && url.length <= 2000
+  const next: Trip = {
+    ...trip,
+    expenses: trip.expenses.map((expense) => {
+      if (keep(expense.photoUrl)) return expense
+      const { photoUrl: _url, photoType: _type, ...rest } = expense
+      return rest
+    }),
+  }
+  if (!keep(next.coverPhotoUrl)) delete next.coverPhotoUrl
+  if (next.wrappedPhotos) {
+    const wrapped = next.wrappedPhotos.filter((url) => keep(url))
+    if (wrapped.length) next.wrappedPhotos = wrapped
+    else delete next.wrappedPhotos
+  }
+  return next
+}
+
 export function exportTrip(trip: Trip) {
-  return b64e(encodeURIComponent(JSON.stringify(trip)))
+  return b64e(encodeURIComponent(JSON.stringify(stripHeavyPhotos(trip))))
 }
 
 export function importTrip(code: string) {
@@ -243,6 +263,10 @@ export function sanitizeTrip(raw: unknown): Trip {
         }
       })
     }
+    if (isKeepablePhotoUrl(expense.photoUrl)) {
+      out.photoUrl = expense.photoUrl
+      if (expense.photoType === "receipt" || expense.photoType === "memory") out.photoType = expense.photoType
+    }
     return goneExpense[out.id] ? [] : [out]
   })
 
@@ -368,6 +392,7 @@ export function sanitizeTrip(raw: unknown): Trip {
   const name = str(o.name, 60, "trip name") || "Lakad"
   const rawCode = typeof o.joinCode === "string" ? normalizeJoinCode(o.joinCode) : ""
   const joinCode = /^[A-Z]{4}-\d{2}$/.test(rawCode) ? rawCode : joinCodeFromId(id, name)
+  const wrappedPhotos = Array.isArray(o.wrappedPhotos) ? o.wrappedPhotos.filter(isKeepablePhotoUrl).slice(0, 4) : []
 
   return {
     id,
@@ -385,6 +410,8 @@ export function sanitizeTrip(raw: unknown): Trip {
     ...(deletedPaymentIds.length ? { deletedPaymentIds } : {}),
     ...(emergencyLog.length ? { emergencyLog } : {}),
     ...(activityLog.length ? { activityLog } : {}),
+    ...(isKeepablePhotoUrl(o.coverPhotoUrl) ? { coverPhotoUrl: o.coverPhotoUrl } : {}),
+    ...(wrappedPhotos.length ? { wrappedPhotos } : {}),
   }
 }
 

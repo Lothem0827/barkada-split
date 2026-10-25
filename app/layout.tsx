@@ -18,24 +18,24 @@ const fontMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://barkada-split-bywn.vercel.app"),
-  title: "Barkada Split",
-  description: "Split group trip expenses with your barkada. Records marks only — no real payments.",
-  applicationName: "Barkada Split",
+  title: "Tally — Bill Splitter",
+  description: "Split group trip expenses with friends. Records marks only — no real payments.",
+  applicationName: "Tally",
   appleWebApp: {
     capable: true,
-    title: "Barkada Split",
+    title: "Tally",
     statusBarStyle: "default",
   },
   openGraph: {
-    title: "Barkada Split",
-    description: "Walang kalimutan ng ambagan! Tap to claim your name, log gastos, and settle up via GCash.",
-    siteName: "Barkada Split",
+    title: "Tally — Bill Splitter",
+    description: "Don't forget who owes what. Tap to claim your name, log expenses, and settle up via GCash.",
+    siteName: "Tally",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Barkada Split",
-    description: "Walang kalimutan ng ambagan! Tap to claim your name, log gastos, and settle up via GCash.",
+    title: "Tally — Bill Splitter",
+    description: "Don't forget who owes what. Tap to claim your name, log expenses, and settle up via GCash.",
   },
   icons: {
     icon: [

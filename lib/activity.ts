@@ -1,4 +1,5 @@
 import { peso, totalOf, transfers, wrappedStats } from "@/lib/calc"
+import { getWrappedVerdict, wrappedRoastSeed } from "@/lib/companion-ai"
 import { inviteUrl } from "@/lib/join-code"
 import {
   ACTIVITY_LOG_CAP,
@@ -217,7 +218,7 @@ export function membersAddedActivity(
     icon: "➕",
     actorId,
     actorName,
-    message: actorName + " added " + names.join(", ") + " to the barkada",
+    message: actorName + " added " + names.join(", ") + " to the group",
     ts,
   }
 }
@@ -267,7 +268,7 @@ export function seatClaimedActivity(trip: Trip, memberId: string, ts: number): A
     icon: "👋",
     actorId: memberId,
     actorName: member.name,
-    message: member.name + " joined the lakad and claimed their seat",
+    message: member.name + " joined the trip and claimed their seat",
     ts,
   }
 }
@@ -284,8 +285,8 @@ export function openModeActivity(actorName: string, actorId: string, open: boole
     actorId,
     actorName,
     message: open
-      ? actorName + " switched lakad to Open Mode (Auto-Approve)"
-      : actorName + " switched lakad to Treasurer Approval Mode",
+      ? actorName + " switched the trip to Open Mode (Auto-Approve)"
+      : actorName + " switched the trip to Treasurer Approval Mode",
     ts,
   }
 }
@@ -373,7 +374,7 @@ export function activityResiboText(item: ActivityLogItem, trip: Trip, now: numbe
   const body =
     item.icon === "👀" ? item.icon + " " + item.message.replace(/seen-zoned/gi, "SEEN ZONED") : item.icon + " " + item.message
   return (
-    "📜 RESIBO ALERT (Barkada Split): " +
+    "📜 RECEIPT ALERT (Tally): " +
     body +
     " (" +
     activityResiboWhen(item.ts, now) +
@@ -386,12 +387,13 @@ export function wrappedShareText(trip: Trip, now: number) {
   const stats = wrappedStats(trip, now)
   const nameOf = (id: string) => memberName(trip, id)
   return [
-    "🧾 LAKAD WRAPPED — " + trip.name,
+    "🧾 TRIP WRAPPED — " + trip.name,
     "Total " + peso(stats.total) + " · " + trip.members.length + " pax · " + stats.days + " days",
     "🏦 The Financier: " + (stats.financier ? nameOf(stats.financier.id) : "—"),
-    "🎁 Libre Magnet: " + (stats.libreMagnet ? nameOf(stats.libreMagnet.id) : "—"),
+    "🎁 Treat magnet: " + (stats.libreMagnet ? nameOf(stats.libreMagnet.id) : "—"),
     "⚡ Fastest Hands: " + (stats.fastest ? nameOf(stats.fastest.id) : "—"),
-    "👻 Tampo Legend: " + (stats.tampo ? nameOf(stats.tampo.id) : "—"),
+    "👻 Sulk legend: " + (stats.tampo ? nameOf(stats.tampo.id) : "—"),
+    "🐾 TALLY: " + getWrappedVerdict(trip, now, wrappedRoastSeed(trip.id)),
     inviteUrl(trip.joinCode),
   ].join("\n")
 }
