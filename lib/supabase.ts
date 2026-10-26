@@ -121,6 +121,34 @@ export async function linkGoogle() {
   return { ok: true as const, reason: "opening" as const, message: "Opening Google…" }
 }
 
+export async function signInWithGoogle(options?: { selectAccount?: boolean }) {
+  const supabase = getSupabase()
+  if (!supabase) return { ok: false as const, reason: "offline" as const, message: "Supabase is not configured." }
+  const origin = typeof window !== "undefined" ? window.location.origin : ""
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: origin + "/auth/callback",
+      ...(options?.selectAccount ? { queryParams: { prompt: "select_account" } } : {}),
+    },
+  })
+  if (error) {
+    const reason = classifyLinkGoogleError(error.message)
+    return { ok: false as const, reason, message: error.message }
+  }
+  return { ok: true as const, reason: "opening" as const, message: "Opening Google…" }
+}
+
+export async function fetchMyRemoteLakads(): Promise<Trip[]> {
+  const supabase = getSupabase()
+  if (!supabase) return []
+  const { data, error } = await supabase.from("lakads").select("payload")
+  if (error || !data) return []
+  return data
+    .map((row) => row.payload as Trip)
+    .filter((trip) => trip && typeof trip.id === "string" && Array.isArray(trip.members))
+}
+
 export type TripPreviewResult =
   | { ok: true; preview: TripPreview; reason: "" }
   | { ok: false; preview: null; reason: "offline" | "missing" | "error"; message: string }

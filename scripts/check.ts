@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { bindSeat, excludeFromPastBills, matchesGcashLast4, seatStatus } from "../lib/claim.ts"
+import { bindSeat, excludeFromPastBills, matchesGcashLast4, profileFromClaimedSeats, seatStatus } from "../lib/claim.ts"
 import { isValidGcash, sanitizeGcash } from "../lib/gcash.ts"
 import { balances, distribute, lvl, parsePeso, peso, sharesOf, totalOf, transfers, wrappedStats } from "../lib/calc.ts"
 import { hydrateState } from "../lib/hydrate.ts"
@@ -277,7 +277,7 @@ console.log("ok  sulk meter + reminders")
 assert.equal(emptyState().onboarded, false)
 assert.equal(emptyState().lakads.length, 0)
 const migrated = hydrateState(
-  { lakads: state.lakads, activeId: "t-siargao", as: "mg", tab: "gastos", lang: "en" },
+  { lakads: state.lakads, activeId: "t-siargao", as: "carl", tab: "gastos", lang: "en" },
   true
 )
 assert.equal(migrated.onboarded, true)
@@ -312,11 +312,11 @@ assert.equal(inviteUrl("ELYU-26", "https://app.example", "m_jigs"), "https://app
   assert.ok(seated.size >= 21)
 }
 const seeded = structuredClone(state.lakads[0])
-const free = bindSeat(seeded, "bea", { name: "Bea", gcash: "0918", avatar: "😎" }, "uid-bea")
+const free = bindSeat(seeded, "mel", { name: "Mel", gcash: "0918", avatar: "😎" }, "uid-mel")
 assert.equal(free.ok, true)
 if (free.ok) {
-  assert.equal(seatStatus(free.trip.members.find((m) => m.id === "bea")!, "uid-bea"), "mine")
-  const denied = bindSeat(free.trip, "bea", { name: "Bea", gcash: "", avatar: "😎" }, "uid-other")
+  assert.equal(seatStatus(free.trip.members.find((m) => m.id === "mel")!, "uid-mel"), "mine")
+  const denied = bindSeat(free.trip, "mel", { name: "Mel", gcash: "", avatar: "😎" }, "uid-other")
   assert.equal(denied.ok, false)
   if (!denied.ok) assert.equal(denied.reason, "locked")
 }
@@ -329,6 +329,30 @@ if (added.ok) assert.equal(added.trip.members.at(-1)?.claimedByUid, "uid-jigs")
 assert.equal(matchesGcashLast4("0917 555 0101", "0101"), true)
 assert.equal(matchesGcashLast4("0917 555 0101", "9999"), false)
 assert.equal(matchesGcashLast4("091", "0091"), false)
+{
+  const empty = { name: "", gcash: "", avatar: "😎", bankNote: "" }
+  const claimed = profileFromClaimedSeats(
+    [
+      {
+        id: "t-cloud",
+        joinCode: "CLD-26",
+        name: "Cloud",
+        treasurer: "j",
+        gcash: "",
+        open: false,
+        roundTo: 0,
+        members: [{ id: "j", name: "Jigs", gcash: "0917 555 0101", claimedByUid: "uid-jigs" }],
+        expenses: [],
+        payments: [],
+      },
+    ],
+    "uid-jigs",
+    empty
+  )
+  assert.equal(claimed.name, "Jigs")
+  assert.equal(claimed.gcash, "0917 555 0101")
+  assert.equal(profileFromClaimedSeats([], "uid-jigs", { ...empty, name: "Bea" }).name, "Bea")
+}
 console.log("ok  join codes + seat claim locks")
 
 {
@@ -981,19 +1005,19 @@ function liveExpense(id: string, addedBy: string, ts: number): Expense {
   const otherConfirmed = siargao.payments.find((payment) => payment.id === "p1")
   assert.ok(sentPay && confirmedPay && otherConfirmed)
 
-  assert.equal(canCancelSent("tin", siargao, sentPay), true)
-  assert.equal(canCancelSent("mg", siargao, sentPay), true)
-  assert.equal(canCancelSent("bea", siargao, sentPay), false)
-  assert.equal(canRevertConfirmed("mg", siargao, confirmedPay), true)
-  assert.equal(canRevertConfirmed("pao", siargao, confirmedPay), false)
-  assert.equal(canRevertConfirmed("jp", siargao, otherConfirmed), true)
-  assert.equal(canRevertConfirmed("tin", siargao, otherConfirmed), false)
-  assert.equal(canRevertConfirmed("bea", siargao, otherConfirmed), false)
-  assert.equal(applyUndoPayment(siargao, sentPay, "bea", Date.now()).ok, false)
-  assert.equal(applyUndoPayment(siargao, confirmedPay, "pao", Date.now()).ok, false)
+  assert.equal(canCancelSent("pals", siargao, sentPay), true)
+  assert.equal(canCancelSent("carl", siargao, sentPay), true)
+  assert.equal(canCancelSent("mel", siargao, sentPay), false)
+  assert.equal(canRevertConfirmed("carl", siargao, confirmedPay), true)
+  assert.equal(canRevertConfirmed("jam", siargao, confirmedPay), false)
+  assert.equal(canRevertConfirmed("jam", siargao, otherConfirmed), true)
+  assert.equal(canRevertConfirmed("pals", siargao, otherConfirmed), false)
+  assert.equal(canRevertConfirmed("mel", siargao, otherConfirmed), false)
+  assert.equal(applyUndoPayment(siargao, sentPay, "mel", Date.now()).ok, false)
+  assert.equal(applyUndoPayment(siargao, confirmedPay, "jam", Date.now()).ok, false)
 
   const balsBeforeSent = balances(siargao)
-  const cancelled = applyUndoPayment(siargao, sentPay, "tin", Date.now())
+  const cancelled = applyUndoPayment(siargao, sentPay, "pals", Date.now())
   assert.equal(cancelled.ok, true)
   if (!cancelled.ok) throw new Error("expected cancel")
   assert.equal(cancelled.kind, "cancel")
@@ -1004,8 +1028,8 @@ function liveExpense(id: string, addedBy: string, ts: number): Expense {
 
   const balsBeforeConfirm = balances(siargao)
   const stamp = Date.now()
-  const fakeNews = makeFakeNewsNudge(siargao, confirmedPay, "mg", "default", "tl", stamp)
-  const reverted = applyUndoPayment(siargao, confirmedPay, "mg", stamp, fakeNews)
+  const fakeNews = makeFakeNewsNudge(siargao, confirmedPay, "carl", "default", "tl", stamp)
+  const reverted = applyUndoPayment(siargao, confirmedPay, "carl", stamp, fakeNews)
   assert.equal(reverted.ok, true)
   if (!reverted.ok) throw new Error("expected revert")
   assert.equal(reverted.kind, "revert")
@@ -1017,7 +1041,7 @@ function liveExpense(id: string, addedBy: string, ts: number): Expense {
   const news = (reverted.trip.nudges || []).find((nudge) => nudge.id === fakeNews.id)
   assert.ok(news)
   assert.equal(news?.to, confirmedPay.from)
-  assert.equal(news?.from, "mg")
+  assert.equal(news?.from, "carl")
   assert.equal(news?.read, false)
   assert.equal(news?.status, "unread")
   assert.ok(news && news.message.length > 10 && !/\{\w+\}/.test(news.message))
@@ -1069,7 +1093,7 @@ function liveExpense(id: string, addedBy: string, ts: number): Expense {
   const assist = reminder(siargao, otherPair, "default", "en", Date.now(), { fromTreasurer: true })
   const plainNudge = reminder(siargao, otherPair, "default", "en", Date.now())
   assert.ok(assist.includes("Treasurer assist"))
-  assert.ok(assist.includes("Migs"))
+  assert.ok(assist.includes("Carl"))
   assert.ok(assist.includes(memberName(siargao, otherPair.to)))
   assert.ok(assist.includes(memberName(siargao, otherPair.from)))
   assert.ok(!/\{\w+\}/.test(assist))
@@ -1369,9 +1393,9 @@ function liveExpense(id: string, addedBy: string, ts: number): Expense {
 
 {
   const lakads = seed().lakads
-  const ids = { authUid: "", profileName: "Migs" }
+  const ids = { authUid: "", profileName: "Carl" }
   const seat = homeSeat(lakads[0], ids)
-  assert.equal(seat?.id, "mg")
+  assert.equal(seat?.id, "carl")
   let owed = 0
   let owe = 0
   for (const trip of lakads) {

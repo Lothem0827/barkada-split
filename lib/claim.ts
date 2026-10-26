@@ -1,4 +1,4 @@
-import { digits, uid, type Member, type Profile, type Trip } from "@/lib/types"
+import { digits, sanitizeProfile, uid, type Member, type Profile, type Trip } from "@/lib/types"
 
 export function gcashLast4(gcash: string) {
   const only = digits(gcash).replace(/\D/g, "")
@@ -86,6 +86,22 @@ export function bindSeat(
       gcash: gcash || member.gcash || nextProfile.gcash,
     },
   }
+}
+
+export function profileFromClaimedSeats(trips: Trip[], uidValue: string, current: Profile): Profile {
+  if (current.name.trim()) return current
+  if (!uidValue) return current
+  for (const trip of trips) {
+    const mine = trip.members.find((member) => member.claimedByUid && member.claimedByUid === uidValue)
+    if (mine) {
+      return sanitizeProfile({
+        ...current,
+        name: mine.name,
+        gcash: current.gcash || mine.gcash,
+      })
+    }
+  }
+  return current
 }
 
 export function resetMemberLock(trip: Trip, memberId: string): Trip {

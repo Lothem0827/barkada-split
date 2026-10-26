@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "@/components/ui/toast"
 import { t } from "@/lib/i18n"
 import { useBarkadaStore } from "@/lib/store"
-import { getSupabase, oauthErrorFromUrl } from "@/lib/supabase"
+import { fetchMyRemoteLakads, getSupabase, oauthErrorFromUrl } from "@/lib/supabase"
 
 export default function AuthCallbackPage() {
   const router = useRouter()
@@ -16,6 +16,13 @@ export default function AuthCallbackPage() {
   useEffect(() => {
     if (handled.current) return
     handled.current = true
+
+    const go = (path: string) => router.replace(path)
+    const homeOrOnboard = () => {
+      const { onboarded, profile } = useBarkadaStore.getState().state
+      go(onboarded || profile.name.trim() ? "/" : "/onboarding")
+    }
+
     const oauthError = oauthErrorFromUrl(window.location.search, window.location.hash)
     if (oauthError) {
       toast.add({
@@ -24,16 +31,29 @@ export default function AuthCallbackPage() {
         timeout: 4200,
         type: "error",
       })
-      router.replace("/")
+      homeOrOnboard()
       return
     }
+
     const supabase = getSupabase()
     if (!supabase) {
-      router.replace("/")
+      homeOrOnboard()
       return
     }
-    void supabase.auth.getSession().then(() => {
-      router.replace("/")
+
+    void supabase.auth.getSession().then(async ({ data }) => {
+      const uid = data.session?.user.id || ""
+      const store = useBarkadaStore.getState()
+      if (uid) store.setAuthUid(uid)
+      const trips = await fetchMyRemoteLakads()
+      if (trips.length) useBarkadaStore.getState().restoreFromCloud(trips)
+      const { profile, onboarded } = useBarkadaStore.getState().state
+      if (profile.name.trim()) {
+        if (!onboarded) useBarkadaStore.getState().finishOnboarding()
+        go("/")
+        return
+      }
+      go("/onboarding?step=sync")
     })
   }, [router])
 

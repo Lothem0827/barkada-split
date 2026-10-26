@@ -23,7 +23,14 @@ import {
 } from "@/lib/activity"
 import { daysOwed, draftErrorMessage, draftToExpense, totalOf } from "@/lib/calc"
 import { isValidGcash, sanitizeGcash } from "@/lib/gcash"
-import { bindSeat, excludeFromPastBills, matchesGcashLast4, resetMemberLock, seatStatus } from "@/lib/claim"
+import {
+  bindSeat,
+  excludeFromPastBills,
+  matchesGcashLast4,
+  profileFromClaimedSeats,
+  resetMemberLock,
+  seatStatus,
+} from "@/lib/claim"
 import { hydrateState } from "@/lib/hydrate"
 import { t, takenNicknameMessage } from "@/lib/i18n"
 import { makeJoinCode } from "@/lib/join-code"
@@ -69,6 +76,7 @@ import {
   memberCanRemove,
   memberName,
   memberOf,
+  isAvatar,
   sanitizeProfile,
   syncProfileToClaimedMembers,
   uid,
@@ -271,12 +279,14 @@ type BarkadaStore = {
   startLakad: (name: string, friends: string[], open: boolean, roundTo: RoundTo, draft: OnboardDraft) => ActionResult
   joinLakad: (code: string, memberId: string | "new", draft: OnboardDraft) => ActionResult
   saveProfile: (draft: OnboardDraft) => ActionResult
+  restoreFromCloud: (trips: Trip[]) => ActionResult
+  finishOnboarding: () => ActionResult
   setRecoveryPin: (pin: string) => Promise<ActionResult>
   setMockGoogleEmail: (email: string) => void
   claimSeat: (
     trip: Trip,
     memberId: string | "new",
-    draft: { name?: string; gcash: string; pin?: string }
+    draft: { name?: string; gcash: string; pin?: string; avatar?: string }
   ) => Promise<ActionResult>
   resetSeatLock: (memberId: string) => Promise<ActionResult>
   loadDemo: (draft?: OnboardDraft) => ActionResult
@@ -491,6 +501,37 @@ export const useBarkadaStore = create<BarkadaStore>()(
           set({ state: merged })
           return { ok: true, message: t(merged.lang, "profileSaved") }
         },
+        restoreFromCloud: (trips) => {
+          const { state } = get()
+          let lakads = state.lakads.slice()
+          for (const trip of trips) {
+            if (!trip?.id || isSeedTripId(trip.id)) continue
+            const index = lakads.findIndex((item) => item.id === trip.id)
+            if (index >= 0) {
+              const dirty = state.dirtyIds.includes(trip.id)
+              lakads[index] = mergeTrip(lakads[index], trip, dirty)
+            } else {
+              lakads.unshift(trip)
+            }
+          }
+          const profile = profileFromClaimedSeats(lakads, state.authUid, state.profile)
+          const hasName = !!profile.name.trim()
+          set({
+            state: {
+              ...state,
+              lakads,
+              profile,
+              onboarded: hasName ? true : state.onboarded,
+              lastSyncedAt: Date.now(),
+            },
+          })
+          return { ok: true, message: t(state.lang, "imported") }
+        },
+        finishOnboarding: () => {
+          const { state } = get()
+          set({ state: { ...state, onboarded: true } })
+          return { ok: true, message: t(state.lang, "saved") }
+        },
         setRecoveryPin: async (pin) => {
           const { state } = get()
           const trimmed = pin.trim()
@@ -514,6 +555,7 @@ export const useBarkadaStore = create<BarkadaStore>()(
             ...state.profile,
             name: draft.name?.trim() || state.profile.name,
             gcash: draft.gcash.trim() || state.profile.gcash,
+            avatar: draft.avatar && isAvatar(draft.avatar) ? draft.avatar : state.profile.avatar,
           }
           const pin = draft.pin?.trim() || ""
           if (pin && !isPin(pin)) return { ok: false, message: t(lang, "pinBad") }

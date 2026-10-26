@@ -101,7 +101,7 @@ export function TripSheet({
                   enterKeyHint="next"
                   maxLength={24}
                   value={you}
-                  placeholder="Migs"
+                  placeholder="Carl"
                   onChange={(event) => {
                     setYou(event.target.value)
                     if (error) setError("")

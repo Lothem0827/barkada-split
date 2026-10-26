@@ -17,7 +17,7 @@ const fontMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://barkada-split-bywn.vercel.app"),
+  metadataBase: new URL("https://tallyto.day"),
   title: "Tally — Bill Splitter",
   description: "Split group trip expenses with friends. Records marks only — no real payments.",
   applicationName: "Tally",

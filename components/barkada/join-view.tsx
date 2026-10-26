@@ -23,7 +23,9 @@ import { t } from "@/lib/i18n"
 import { normalizeJoinCode } from "@/lib/join-code"
 import { fetchTripPreview, type TripPreview } from "@/lib/supabase"
 import { useBarkada, useBarkadaStore } from "@/lib/store"
-import { memberName, type Member, type Trip } from "@/lib/types"
+import { AVATARS, memberName, type Member, type Trip } from "@/lib/types"
+
+const QUICK_AVATARS = AVATARS.slice(0, 8)
 
 function asTrip(preview: TripPreview): Trip {
   return {
@@ -40,7 +42,15 @@ function asTrip(preview: TripPreview): Trip {
   }
 }
 
-export function JoinView({ code, seat }: { code: string; seat?: string }) {
+export function JoinView({
+  code,
+  seat,
+  embedded,
+}: {
+  code: string
+  seat?: string
+  embedded?: boolean
+}) {
   const router = useRouter()
   const store = useBarkada()
   const { lang, authUid, profile, lakads, onboarded } = store.state
@@ -54,6 +64,7 @@ export function JoinView({ code, seat }: { code: string; seat?: string }) {
   const [recoverId, setRecoverId] = useState("")
   const [name, setName] = useState(profile.name)
   const [gcash, setGcash] = useState(profile.gcash)
+  const [avatar, setAvatar] = useState(profile.avatar || "😎")
   const [pin, setPin] = useState("")
   const [busy, setBusy] = useState(false)
   const [inAppBrowser, setInAppBrowser] = useState(false)
@@ -116,6 +127,7 @@ export function JoinView({ code, seat }: { code: string; seat?: string }) {
       setSelected(featured.id)
       setAdding(false)
       setGcash(profile.gcash || featured.gcash || "")
+      setName(featured.name)
     }
   }, [featured, profile.gcash])
 
@@ -137,7 +149,7 @@ export function JoinView({ code, seat }: { code: string; seat?: string }) {
     setAdding(false)
     setError("")
     setGcash(profile.gcash || found?.gcash || "")
-    if (found && !profile.name) setName(found.name)
+    if (found) setName(found.name)
   }
 
   async function claim(memberId: string | "new", recoveryPin = "") {
@@ -155,6 +167,7 @@ export function JoinView({ code, seat }: { code: string; seat?: string }) {
       name: memberId === "new" ? name : found?.name || name,
       gcash,
       pin: recoveryPin,
+      avatar,
     })
     setBusy(false)
     if (!result.ok) {
@@ -166,25 +179,29 @@ export function JoinView({ code, seat }: { code: string; seat?: string }) {
 
   const gridMembers = trip ? (showAll || !featured ? trip.members : []) : []
 
-  return (
-    <div className="flex min-h-dvh w-full flex-col bg-background">
-      <header className="flex items-center gap-2 border-b px-4 pt-[max(12px,env(safe-area-inset-top))] pb-3">
-        <Button
-          variant="outline"
-          size="icon"
-          className="size-11"
-          aria-label={t(lang, "back")}
-          onClick={() => router.push(onboarded ? "/" : "/onboarding")}
-        >
-          <ArrowLeftIcon />
-        </Button>
-        <div className="min-w-0">
-          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{t(lang, "joinCodeLabel")}</p>
-          <p className="font-mono text-sm select-all">{joinCode}</p>
-        </div>
-      </header>
+  const seatName = adding ? name.trim() : member?.name || ""
 
-      <main className={`flex flex-1 flex-col gap-5 overflow-y-auto px-4 py-5 ${selected ? "pb-40" : ""}`}>
+  return (
+    <div className={`flex w-full flex-col bg-background ${embedded ? "min-h-0 flex-1" : "min-h-dvh"}`}>
+      {embedded ? null : (
+        <header className="flex items-center gap-2 border-b px-4 pt-[max(12px,env(safe-area-inset-top))] pb-3">
+          <Button
+            variant="outline"
+            size="icon"
+            className="size-11"
+            aria-label={t(lang, "back")}
+            onClick={() => router.push(onboarded ? "/" : "/onboarding")}
+          >
+            <ArrowLeftIcon />
+          </Button>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{t(lang, "joinCodeLabel")}</p>
+            <p className="font-mono text-sm select-all">{joinCode}</p>
+          </div>
+        </header>
+      )}
+
+      <main className={`flex flex-1 flex-col gap-5 overflow-y-auto ${embedded ? "px-0 py-1" : "px-4 py-5"} ${selected ? "pb-40" : ""}`}>
         {inAppBrowser ? (
           <Alert className="border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-50">
             <TriangleAlertIcon />
@@ -302,7 +319,10 @@ export function JoinView({ code, seat }: { code: string; seat?: string }) {
         {error ? <FieldError>{error}</FieldError> : null}
       </main>
       {trip && selected && !recoverId ? (
-        <footer className="border-t bg-background/95 px-4 pt-3 pb-[max(16px,env(safe-area-inset-bottom))] backdrop-blur">
+        <footer className={`border-t bg-background/95 pt-3 pb-[max(16px,env(safe-area-inset-bottom))] backdrop-blur ${embedded ? "px-0" : "px-4"}`}>
+          <p className="mb-3 text-sm wrap-break-word">
+            {t(lang, "obWelcomeSeat").replace("{name}", seatName || "…")}
+          </p>
           <FieldGroup>
             {adding ? (
               <Field>
@@ -316,6 +336,25 @@ export function JoinView({ code, seat }: { code: string; seat?: string }) {
                 />
               </Field>
             ) : null}
+            <Field>
+              <FieldLabel>{t(lang, "obAvatar")}</FieldLabel>
+              <div className="no-scrollbar -mx-1 min-w-0 overflow-x-auto overscroll-x-contain snap-x py-1">
+                <div className="flex w-max gap-2">
+                  {QUICK_AVATARS.map((item) => (
+                    <Button
+                      key={item}
+                      type="button"
+                      variant={avatar === item ? "default" : "outline"}
+                      className="size-11 shrink-0 snap-start text-lg"
+                      aria-pressed={avatar === item}
+                      onClick={() => setAvatar(item)}
+                    >
+                      {item}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            </Field>
             <Field>
               <FieldLabel htmlFor="join-gcash">{t(lang, "claimGcash")}</FieldLabel>
               <Input
@@ -334,11 +373,13 @@ export function JoinView({ code, seat }: { code: string; seat?: string }) {
           </FieldGroup>
           <Button
             size="cta"
-            className="mt-3 min-h-[52px]"
+            className="mt-3 min-h-[52px] w-full"
             disabled={busy || (adding && !name.trim())}
             onClick={() => void claim(selected)}
           >
-            {t(lang, "claimAs").replace("{name}", adding ? name.trim() || "…" : member?.name || "")}
+            {embedded || !onboarded
+              ? "🚀 " + t(lang, "obPasok")
+              : t(lang, "claimAs").replace("{name}", seatName || "…")}
           </Button>
         </footer>
       ) : null}
