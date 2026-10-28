@@ -7,7 +7,7 @@ export const SEED_TRIP_IDS = ["t-siargao", "t-baguio"] as const
 export const LANGS = ["tl", "en", "ceb"] as const
 
 export type Lang = (typeof LANGS)[number]
-export type Tab = "home" | "gastos" | "hatian" | "barkada"
+export type Tab = "home" | "gastos" | "hatian" | "barkada" | "activity"
 export type SplitMethod = "even" | "item" | "exclude" | "libre"
 export type ExpenseStatus = "pending" | "approved" | "rejected"
 export type PaymentStatus = "sent" | "confirmed"
@@ -41,7 +41,7 @@ export const NUDGE_STATUS_RANK: Record<NudgeStatus, number> = {
   seen_zoned: 2,
 }
 
-export const TABS: Tab[] = ["home", "gastos", "hatian", "barkada"]
+export const TABS: Tab[] = ["home", "gastos", "hatian", "barkada", "activity"]
 
 export type Member = {
   id: string

@@ -1,4 +1,4 @@
-import { peso, totalOf, transfers, wrappedStats } from "@/lib/calc"
+import { peso, totalOf, wrappedStats } from "@/lib/calc"
 import { getWrappedVerdict, wrappedRoastSeed } from "@/lib/companion-ai"
 import { inviteUrl } from "@/lib/join-code"
 import {
@@ -16,8 +16,6 @@ import {
   type RoundTo,
   type Trip,
 } from "@/lib/types"
-
-export type BarkadaHub = "roster" | "chismis" | "wrapped"
 
 export function mergeActivityLog(local: ActivityLogItem[], remote: ActivityLogItem[]): ActivityLogItem[] {
   const map = new Map<string, ActivityLogItem>()
@@ -349,14 +347,6 @@ export function latestActivityTs(trip: Trip) {
 export function unreadActivityCount(trip: Trip, lastSeenTs: number) {
   if (lastSeenTs <= 0) return 0
   return tripActivityLog(trip).filter((item) => item.ts > lastSeenTs).length
-}
-
-export function defaultBarkadaHub(trip: Trip, lastSeenTs: number): BarkadaHub {
-  if (unreadActivityCount(trip, lastSeenTs) > 0) return "chismis"
-  const unclaimed = trip.members.filter((member) => !member.claimedByUid).length
-  if (trip.expenses.length === 0 || unclaimed > 0) return "roster"
-  if (transfers(trip).length === 0) return "wrapped"
-  return "roster"
 }
 
 export function isDramaticActivity(item: ActivityLogItem) {

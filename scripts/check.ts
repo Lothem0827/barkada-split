@@ -42,7 +42,6 @@ import { seed } from "../lib/seed.ts"
 import {
   activityAgo,
   activityResiboText,
-  defaultBarkadaHub,
   isDramaticActivity,
   mergeActivityLog,
   tripActivityLog,
@@ -1173,9 +1172,8 @@ function liveExpense(id: string, addedBy: string, ts: number): Expense {
 
   assert.equal(unreadActivityCount(siargao, 0), 0)
   assert.ok(unreadActivityCount(siargao, 1) > 0)
-  assert.equal(defaultBarkadaHub(siargao, Date.now()), "roster")
-  assert.equal(defaultBarkadaHub({ ...siargao, expenses: [], payments: [] }, Date.now()), "roster")
-  assert.equal(defaultBarkadaHub(siargao, 1), "chismis")
+  assert.equal(isSettledTrip(siargao), false)
+  assert.equal(isSettledTrip({ ...siargao, expenses: [], payments: [] }), false)
 
   const settled = {
     ...siargao,
@@ -1213,7 +1211,7 @@ function liveExpense(id: string, addedBy: string, ts: number): Expense {
     activityLog: [],
     nudges: [],
   }
-  assert.equal(defaultBarkadaHub(settled, Date.now()), "wrapped")
+  assert.equal(isSettledTrip(settled), true)
   assert.equal(isDramaticActivity(remote), true)
   assert.equal(isDramaticActivity(first), false)
   const resibo = activityResiboText(

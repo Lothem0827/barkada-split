@@ -15,6 +15,7 @@ import {
 
 import { ArmButton } from "@/components/barkada/arm-button"
 import { TaliStrip } from "@/components/barkada/tali-strip"
+import { WrappedCta } from "@/components/barkada/wrapped-cta"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -365,6 +366,7 @@ export function GastosView({
   onRejectEdit,
   onDelete,
   onInvite,
+  onOpenWrapped,
   hiddenExpenseId,
 }: {
   onEdit: (id: string) => void
@@ -375,6 +377,7 @@ export function GastosView({
   onRejectEdit: (id: string) => void
   onDelete: (id: string) => void
   onInvite: () => void
+  onOpenWrapped: () => void
   hiddenExpenseId?: string | null
 }) {
   const { state, trip, now } = useBarkada()
@@ -412,6 +415,9 @@ export function GastosView({
         <CardHeader>
           <CardDescription>{t(lang, "totalGastos")}</CardDescription>
           <CardTitle className="font-mono text-3xl font-extrabold tabular-nums">{peso(stats.total)}</CardTitle>
+          <CardAction className="self-center">
+            <WrappedCta trip={trip} variant="hero" lang={lang} onOpen={onOpenWrapped} />
+          </CardAction>
           <CardDescription>
             {memberName(trip, as)},{" "}
             {net === 0 ? (

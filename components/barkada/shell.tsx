@@ -3,19 +3,11 @@
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import {
-  ArrowLeftRightIcon,
-  CrownIcon,
-  HouseIcon,
-  Link2Icon,
-  PlusIcon,
-  ReceiptIcon,
-  SettingsIcon,
-  Undo2Icon,
-  UsersIcon,
-} from "lucide-react"
+import { CrownIcon, HouseIcon, Link2Icon, PlusIcon, SettingsIcon, Undo2Icon } from "lucide-react"
 
-import { BarkadaView, useLastSeenActivity } from "@/components/barkada/barkada-view"
+import { ActivityLogCard } from "@/components/barkada/activity-log"
+import { BarkadaView, markActivitySeen, useLastSeenActivity } from "@/components/barkada/barkada-view"
+import { BottomNav } from "@/components/barkada/bottom-nav"
 import { OnboardingView } from "@/components/barkada/onboarding-view"
 import { ExpenseSheet } from "@/components/barkada/expense-sheet"
 import { GastosView } from "@/components/barkada/gastos-view"
@@ -24,6 +16,7 @@ import { IncomingNudge } from "@/components/barkada/incoming-nudge"
 import { HomeView } from "@/components/barkada/home-view"
 import { InviteBarkadaSheet } from "@/components/barkada/invite-sheet"
 import { LakadSettingsSheet } from "@/components/barkada/lakad-settings-sheet"
+import { LakadWrappedModal } from "@/components/barkada/lakad-wrapped-modal"
 import { ProfilePill, ProfileSheet } from "@/components/barkada/profile-sheet"
 import {
   CopySheet,
@@ -31,7 +24,6 @@ import {
   JoinSheet,
   TripSheet,
 } from "@/components/barkada/sheets"
-import { WrappedCard } from "@/components/barkada/wrapped-card"
 import { Button } from "@/components/ui/button"
 import {
   Drawer,
@@ -42,10 +34,10 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer"
 import { Card, CardContent } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tabs, TabsContent } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/toast"
 import { t } from "@/lib/i18n"
-import { unreadActivityCount } from "@/lib/activity"
+import { latestActivityTs, unreadActivityCount } from "@/lib/activity"
 import { consumeJustCreated } from "@/lib/join-code"
 import { isSeedTripId } from "@/lib/merge-trip"
 import { copyText } from "@/lib/snapshot"
@@ -56,15 +48,8 @@ import {
   newExpenseDraft,
   unackedCrownPass,
   type ExpenseDraft,
-  type ShotRatio,
   type Tab,
 } from "@/lib/types"
-
-const TABS: { id: Tab; icon: typeof HouseIcon; key: "gastos" | "hatian" | "barkada" }[] = [
-  { id: "gastos", icon: ReceiptIcon, key: "gastos" },
-  { id: "hatian", icon: ArrowLeftRightIcon, key: "hatian" },
-  { id: "barkada", icon: UsersIcon, key: "barkada" },
-]
 
 type Confirm = { kind: "delete"; id: string } | { kind: "reset-lock"; id: string; name: string } | null
 
@@ -105,7 +90,7 @@ function AppFrame() {
   const router = useRouter()
   const store = useBarkada()
   const { state, trip } = store
-  const { lang, as, tab, screenshotMode, onboarded } = state
+  const { lang, as, tab, onboarded } = state
   const [expenseOpen, setExpenseOpen] = useState(false)
   const [draft, setDraft] = useState<ExpenseDraft | null>(null)
   const [tripOpen, setTripOpen] = useState(false)
@@ -118,7 +103,7 @@ function AppFrame() {
   const [estimatorOpen, setEstimatorOpen] = useState(false)
   const [copyOpen, setCopyOpen] = useState(false)
   const [copyValue, setCopyValue] = useState("")
-  const [shotRatio, setShotRatio] = useState<ShotRatio>("916")
+  const [wrappedTripId, setWrappedTripId] = useState<string | null>(null)
   const [confirm, setConfirm] = useState<Confirm>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [hatianFocus, setHatianFocus] = useState<string | null>(null)
@@ -127,7 +112,12 @@ function AppFrame() {
 
   const liveInvite = !!(trip && !isSeedTripId(trip.id))
   const lastSeen = useLastSeenActivity(trip?.id ?? null)
-  const unreadBarkada = trip ? unreadActivityCount(trip, lastSeen) : 0
+  const unreadActivity = trip ? unreadActivityCount(trip, lastSeen) : 0
+
+  useEffect(() => {
+    if (tab !== "activity" || !trip) return
+    markActivitySeen(trip.id, Math.max(Date.now(), latestActivityTs(trip)))
+  }, [tab, trip])
 
   useEffect(() => {
     if (!trip || isSeedTripId(trip.id)) return
@@ -191,39 +181,16 @@ function AppFrame() {
     setExpenseOpen(true)
   }
 
-  if (!onboarded) {
-    return <OnboardingView />
+  function viewWrapped(id: string) {
+    setWrappedTripId(id)
   }
 
-  if (screenshotMode && trip) {
-    return (
-      <div className="mx-auto flex min-h-dvh w-full max-w-[560px] flex-col items-center justify-center gap-3 bg-background px-4 py-4">
-        <div
-          className={`flex w-full max-w-full flex-col justify-center overflow-hidden bg-muted/40 ${shotRatio === "45" ? "aspect-[4/5] px-[7%] py-[4%]" : "aspect-[9/16] px-[6%] py-[7%]"}`}
-        >
-          <WrappedCard trip={trip} now={store.now} lang={lang} interactive={false} />
-        </div>
-        <div className="flex flex-wrap justify-center gap-2">
-          <Button
-            className="h-11"
-            variant={shotRatio === "916" ? "default" : "outline"}
-            onClick={() => setShotRatio("916")}
-          >
-            {t(lang, "story")}
-          </Button>
-          <Button
-            className="h-11"
-            variant={shotRatio === "45" ? "default" : "outline"}
-            onClick={() => setShotRatio("45")}
-          >
-            {t(lang, "post")}
-          </Button>
-          <Button className="h-11" variant="ghost" onClick={() => store.setScreenshotMode(false)}>
-            {t(lang, "exitShot")}
-          </Button>
-        </div>
-      </div>
-    )
+  const wrappedTrip = wrappedTripId
+    ? (state.lakads.find((item) => item.id === wrappedTripId) ?? (trip?.id === wrappedTripId ? trip : null))
+    : null
+
+  if (!onboarded) {
+    return <OnboardingView />
   }
 
   return (
@@ -231,7 +198,7 @@ function AppFrame() {
       <Tabs
         value={tab}
         onValueChange={(value) => store.setTab(value as Tab)}
-        className={`min-h-dvh w-full gap-0 bg-background ${tab === "home" || !trip ? "" : "pb-16"}`}
+        className={`min-h-dvh w-full gap-0 bg-background ${tab === "home" || !trip ? "" : "pb-20"}`}
       >
         {tab === "home" || !trip ? (
           <header className="flex items-start justify-between gap-3 border-b px-4 pt-[max(12px,env(safe-area-inset-top))] pb-4">
@@ -316,7 +283,7 @@ function AppFrame() {
 
         <main
           className={`flex flex-col gap-4 px-4 py-4 ${
-            tab === "home" || !trip ? "pb-40" : trip ? "pb-36" : ""
+            tab === "home" || !trip ? "pb-40" : trip ? "pb-28" : ""
           }`}
         >
           <TabsContent value="home">
@@ -324,6 +291,7 @@ function AppFrame() {
               onNewTrip={() => setTripOpen(true)}
               onJoin={() => setJoinOpen(true)}
               onEstimator={() => setEstimatorOpen(true)}
+              onOpenWrapped={viewWrapped}
             />
           </TabsContent>
           <TabsContent value="gastos">
@@ -363,6 +331,7 @@ function AppFrame() {
                   })
                 }}
                 onInvite={() => openInvite()}
+                onOpenWrapped={() => viewWrapped(trip.id)}
               />
             ) : null}
           </TabsContent>
@@ -372,44 +341,28 @@ function AppFrame() {
                 onCopy={copy}
                 focusKey={hatianFocus}
                 onFocused={() => setHatianFocus(null)}
+                onOpenWrapped={() => viewWrapped(trip.id)}
               />
             ) : null}
           </TabsContent>
           <TabsContent value="barkada">
             {trip ? (
               <BarkadaView
-                onCopy={copy}
                 onResetLock={(id, name) => openConfirm({ kind: "reset-lock", id, name })}
                 onInvite={openInvite}
+                onOpenWrapped={() => viewWrapped(trip.id)}
               />
             ) : null}
           </TabsContent>
+          <TabsContent value="activity">
+            {trip ? <ActivityLogCard trip={trip} now={store.now} lang={lang} onCopy={copy} /> : null}
+          </TabsContent>
         </main>
 
-        {trip && tab !== "home" ? (
-          <TabsList
-            variant="line"
-            className="fixed bottom-0 inset-x-0 z-30 grid h-auto! w-full grid-cols-3 rounded-none border-t bg-background select-none pb-[max(12px,env(safe-area-inset-bottom))]"
-          >
-            {TABS.map((item) => {
-              const Icon = item.icon
-              return (
-                <TabsTrigger key={item.id} value={item.id} className="h-auto min-h-12 flex-col gap-0 py-1">
-                  <span className="relative">
-                    <Icon />
-                    {item.id === "barkada" && unreadBarkada > 0 ? (
-                      <span className="absolute -top-0.5 -right-1 size-2 animate-pulse rounded-full bg-destructive" />
-                    ) : null}
-                  </span>
-                  {t(lang, item.key)}
-                </TabsTrigger>
-              )
-            })}
-          </TabsList>
-        ) : null}
+        {trip && tab !== "home" ? <BottomNav lang={lang} unreadActivity={unreadActivity} /> : null}
       </Tabs>
 
-      {trip && tab !== "home" ? (
+      {trip && tab !== "home" && !wrappedTripId ? (
         <Button
           className="fixed right-[max(1rem,calc(50%-280px+1rem))] bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-20 min-h-[50px] rounded-full px-5 shadow-lg"
           onClick={openAdd}
@@ -461,6 +414,12 @@ function AppFrame() {
         <EstimatorSheet key="est" open onOpenChange={setEstimatorOpen} onCopy={copy} />
       ) : null}
       {copyOpen ? <CopySheet key="copy" open text={copyValue} onOpenChange={setCopyOpen} /> : null}
+      <LakadWrappedModal
+        trip={wrappedTrip}
+        open={!!wrappedTripId}
+        onClose={() => setWrappedTripId(null)}
+        onCopy={copy}
+      />
 
       <Drawer
         open={dialogOpen}

@@ -311,7 +311,7 @@ type BarkadaStore = {
   removeMember: (id: string) => ActionResult
   setGcash: (gcash: string) => ActionResult
   renameTrip: (name: string) => ActionResult
-  setTripPhotos: (patch: { coverPhotoUrl?: string | null; wrappedPhotos?: string[] }) => ActionResult
+  setTripPhotos: (patch: { coverPhotoUrl?: string | null; wrappedPhotos?: string[] }, tripId?: string) => ActionResult
   setOpen: (open: boolean) => ActionResult
   setRoundTo: (roundTo: RoundTo) => ActionResult
   handoff: (id: string) => ActionResult
@@ -1257,12 +1257,14 @@ export const useBarkadaStore = create<BarkadaStore>()(
           set({ state: withTrip(state, active.id, (trip) => ({ ...trip, name: trimmed })) })
           return { ok: true, message: t(state.lang, "saved") }
         },
-        setTripPhotos: (patch) => {
+        setTripPhotos: (patch, tripId) => {
           const { state } = get()
-          const active = activeTrip(state)
-          if (!active) return { ok: false, message: t(state.lang, "needPeople") }
+          const id = tripId ?? activeTrip(state)?.id
+          if (!id || !state.lakads.some((item) => item.id === id)) {
+            return { ok: false, message: t(state.lang, "needPeople") }
+          }
           set({
-            state: withTrip(state, active.id, (trip) => {
+            state: withTrip(state, id, (trip) => {
               const wrapped = (patch.wrappedPhotos ?? trip.wrappedPhotos ?? []).filter(Boolean).slice(0, 4)
               const cover =
                 patch.coverPhotoUrl !== undefined ? patch.coverPhotoUrl : trip.coverPhotoUrl || wrapped[0] || null

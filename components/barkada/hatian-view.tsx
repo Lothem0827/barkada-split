@@ -21,6 +21,7 @@ import {
 import { CopyAction } from "@/components/barkada/copy-action"
 import { MascotAvatar, TaliStrip } from "@/components/barkada/tali-strip"
 import { HatianActionSheet } from "@/components/barkada/hatian-action-sheet"
+import { WrappedCta } from "@/components/barkada/wrapped-cta"
 import { MemberSheet } from "@/components/barkada/sheets"
 import { SulkMeter } from "@/components/barkada/sulk-meter"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -72,10 +73,12 @@ export function HatianView({
   onCopy,
   focusKey,
   onFocused,
+  onOpenWrapped,
 }: {
   onCopy: (text: string, label: string) => boolean | void | Promise<boolean | void>
   focusKey?: string | null
   onFocused?: () => void
+  onOpenWrapped: () => void
 }) {
   const store = useBarkada()
   const { state, trip, now, markPaid, confirmPayment, sendNudge } = store
@@ -451,18 +454,34 @@ export function HatianView({
           )
         })
       ) : (
-        <Empty className="border">
-          <EmptyHeader>
-            {!(list.length && hatianScope === "mine") ? (
+        list.length && hatianScope === "mine" ? (
+          <Empty className="border">
+            <EmptyHeader>
+              <EmptyTitle>{t(lang, "noMyDebts")}</EmptyTitle>
+            </EmptyHeader>
+          </Empty>
+        ) : trip.expenses.length > 0 && list.length === 0 ? (
+          <Card className="border-primary">
+            <CardHeader>
+              <CardTitle className="flex items-start gap-2">
+                <PartyPopperIcon className="mt-0.5 size-5 shrink-0" />
+                <span>{t(lang, "wrappedCelebrate")}</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <WrappedCta trip={trip} variant="celebrate" lang={lang} onOpen={onOpenWrapped} />
+            </CardContent>
+          </Card>
+        ) : (
+          <Empty className="border">
+            <EmptyHeader>
               <EmptyMedia variant="icon">
                 <PartyPopperIcon />
               </EmptyMedia>
-            ) : null}
-            <EmptyTitle>
-              {list.length && hatianScope === "mine" ? t(lang, "noMyDebts") : t(lang, "noDebts")}
-            </EmptyTitle>
-          </EmptyHeader>
-        </Empty>
+              <EmptyTitle>{t(lang, "noDebts")}</EmptyTitle>
+            </EmptyHeader>
+          </Empty>
+        )
       )}
 
       {trip.roundTo && list.length ? (

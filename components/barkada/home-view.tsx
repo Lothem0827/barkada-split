@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { CalculatorIcon, PalmtreeIcon, PlusIcon, UserPlusIcon, UsersIcon } from "lucide-react"
 
 import { lastSeenOf } from "@/components/barkada/barkada-view"
+import { WrappedCta } from "@/components/barkada/wrapped-cta"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -30,10 +31,12 @@ export function HomeView({
   onNewTrip,
   onJoin,
   onEstimator,
+  onOpenWrapped,
 }: {
   onNewTrip: () => void
   onJoin: () => void
   onEstimator: () => void
+  onOpenWrapped: (tripId: string) => void
 }) {
   const router = useRouter()
   const { state, now, openTrip } = useBarkada()
@@ -192,9 +195,17 @@ export function HomeView({
                         <p className="font-mono text-xs text-muted-foreground">{trip.joinCode}</p>
                       </div>
                     </div>
-                    <Badge variant={myNet < 0 ? "outline" : "secondary"} className="shrink-0">
-                      {pill}
-                    </Badge>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <Badge variant={myNet < 0 ? "outline" : "secondary"}>{pill}</Badge>
+                      {isSettledTrip(trip) ? (
+                        <WrappedCta
+                          trip={trip}
+                          variant="home"
+                          lang={lang}
+                          onOpen={() => onOpenWrapped(trip.id)}
+                        />
+                      ) : null}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="flex px-1">
