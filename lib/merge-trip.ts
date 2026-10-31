@@ -107,6 +107,8 @@ export function mergeTrip(local: Trip, remote: Trip, dirty: boolean): Trip {
       name: dirty ? localMember.name : remoteMember.name,
       gcash: localMember.gcash || remoteMember.gcash,
       claimedByUid: localMember.claimedByUid || remoteMember.claimedByUid || null,
+      joinedAt: localMember.joinedAt ?? remoteMember.joinedAt,
+      leftAt: localMember.leftAt ?? remoteMember.leftAt,
     }
   })
   local.members.forEach((localMember) => {

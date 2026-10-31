@@ -37,6 +37,7 @@ import { t, type CopyKey } from "@/lib/i18n"
 import { useBarkada } from "@/lib/store"
 import {
   METHODS,
+  activeMembers,
   memberName,
   newItemDraft,
   type ExpenseDraft,
@@ -94,6 +95,7 @@ export function ExpenseSheet({
   const { lang } = state
   const liveTrip = trip
   const liveDraft = draft
+  const roster = activeMembers(liveTrip)
   const treasurer = state.as === liveTrip.treasurer
   const willPend = !(liveTrip.open || treasurer)
   const parsed = preview ?? draftToExpense(liveTrip, liveDraft)
@@ -137,14 +139,25 @@ export function ExpenseSheet({
     patch({
       items: [
         ...liveDraft.items,
-        { name: t(lang, "sukli"), price: plain(remainder), eaters: liveTrip.members.map((m) => m.id) },
+        { name: t(lang, "sukli"), price: plain(remainder), eaters: roster.map((m) => m.id) },
       ],
     })
   }
 
-  const shares = parsed.e.amount > 0 ? sharesOf(trip, { ...parsed.e, id: "preview", addedBy: state.as, status: "approved", ts: 0 }) : {}
+  const existing = draft.id ? trip.expenses.find((expense) => expense.id === draft.id) : undefined
+  const shares =
+    parsed.e.amount > 0
+      ? sharesOf(trip, {
+          ...parsed.e,
+          id: "preview",
+          addedBy: state.as,
+          status: "approved",
+          ts: 0,
+          at: existing ? existing.at ?? 0 : Date.now(),
+        })
+      : {}
   const kasali = trip.members.filter((member) => (shares[member.id] || 0) > 0)
-  const free = trip.members.filter((member) => parsed.e.ex.includes(member.id) || (parsed.e.amount > 0 && !(shares[member.id] > 0)))
+  const free = trip.members.filter((member) => parsed.e.ex.includes(member.id))
   const head = kasali[0] ? shares[kasali[0].id] : 0
   const patak =
     parsed.e.amount > 0
@@ -173,7 +186,7 @@ export function ExpenseSheet({
           </DrawerDescription>
         </DrawerHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-3">
-          {trip.members.length === 0 ? (
+          {roster.length === 0 ? (
             <Alert>
               <AlertDescription>{t(lang, "needPeople")}</AlertDescription>
             </Alert>
@@ -214,8 +227,8 @@ export function ExpenseSheet({
                 <FieldLabel>{t(lang, "payer")}</FieldLabel>
                 <MemberChipRow
                   members={[
-                    ...trip.members.filter((member) => member.id === state.as),
-                    ...trip.members.filter((member) => member.id !== state.as),
+                    ...roster.filter((member) => member.id === state.as),
+                    ...roster.filter((member) => member.id !== state.as),
                   ]}
                   selected={[draft.payer]}
                   label={(member) =>
@@ -253,18 +266,18 @@ export function ExpenseSheet({
                   <FieldLabel>{draft.method === "libre" ? t(lang, "libreWho") : t(lang, "excludeWho")}</FieldLabel>
                   <MemberChipRow
                     members={[
-                      ...trip.members.filter((member) => member.id !== draft.payer),
-                      ...trip.members.filter((member) => member.id === draft.payer),
+                      ...roster.filter((member) => member.id !== draft.payer),
+                      ...roster.filter((member) => member.id === draft.payer),
                     ]}
                     selected={draft.ex}
                     onToggle={(id) => {
                       const selected = draft.ex.includes(id)
-                      if (!selected && draft.ex.length >= trip.members.length - 1) return
+                      if (!selected && draft.ex.length >= roster.length - 1) return
                       patch({
                         ex: selected ? draft.ex.filter((item) => item !== id) : [...draft.ex, id],
                       })
                     }}
-                    disabled={(id) => !draft.ex.includes(id) && draft.ex.length >= trip.members.length - 1}
+                    disabled={(id) => !draft.ex.includes(id) && draft.ex.length >= roster.length - 1}
                   />
                   {draft.ex.includes(draft.payer) ? (
                     <Alert>
@@ -283,7 +296,7 @@ export function ExpenseSheet({
                   <FieldLegend variant="label">{t(lang, "items")}</FieldLegend>
                   <FieldDescription>{t(lang, "itemsHint")}</FieldDescription>
                   {draft.items.map((item, index) => {
-                    const allOn = item.eaters.length === trip.members.length
+                    const allOn = roster.length > 0 && roster.every((member) => item.eaters.includes(member.id))
                     return (
                       <div key={index} className="flex flex-col gap-2 rounded-xl bg-card p-3">
                         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_110px_auto] gap-2">
@@ -333,7 +346,7 @@ export function ExpenseSheet({
                           </Button>
                         </div>
                         <MemberChipRow
-                          members={trip.members}
+                          members={roster}
                           selected={item.eaters}
                           onToggle={(id) => {
                             const items = draft.items.slice()
@@ -353,7 +366,7 @@ export function ExpenseSheet({
                               const items = draft.items.slice()
                               items[index] = {
                                 ...item,
-                                eaters: allOn ? [] : trip.members.map((member) => member.id),
+                                eaters: allOn ? [] : roster.map((member) => member.id),
                               }
                               patch({ items })
                             }}
@@ -510,7 +523,7 @@ export function ExpenseSheet({
             </FieldGroup>
           )}
         </div>
-        {trip.members.length ? (
+        {roster.length ? (
           <DrawerFooter>
             {patak ? (
               <p className="rounded-full bg-muted px-3 py-2 text-center text-sm font-medium wrap-break-word">

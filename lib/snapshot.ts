@@ -187,11 +187,21 @@ export function sanitizeTrip(raw: unknown): Trip {
       typeof member.claimedByUid === "string" && member.claimedByUid
         ? member.claimedByUid.slice(0, 64)
         : null
+    const joinedAt =
+      typeof member.joinedAt === "number" && Number.isSafeInteger(member.joinedAt) && member.joinedAt > 0
+        ? member.joinedAt
+        : 0
+    const leftAt =
+      typeof member.leftAt === "number" && Number.isSafeInteger(member.leftAt) && member.leftAt > 0
+        ? member.leftAt
+        : 0
     return {
       id,
       name: str(member.name, 40, "member name") || "?",
       gcash: str(member.gcash, 30, "gcash", true),
       ...(claimedByUid ? { claimedByUid } : {}),
+      ...(joinedAt ? { joinedAt } : {}),
+      ...(leftAt ? { leftAt } : {}),
     }
   })
   if (!members.length) bad("no members")
@@ -241,6 +251,7 @@ export function sanitizeTrip(raw: unknown): Trip {
       status: expense.status === "pending" ? "pending" : expense.status === "rejected" ? "rejected" : "approved",
       ts: int(expense.ts, "expense time"),
     }
+    if (typeof expense.at === "number" && Number.isSafeInteger(expense.at) && expense.at > 0) out.at = expense.at
     if (out.amount > 1e11) bad("amount too large")
     if (out.status === "rejected" && typeof expense.rejectionReason === "string") {
       const reason = str(expense.rejectionReason, 80, "rejection reason", true).trim()

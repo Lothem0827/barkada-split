@@ -388,10 +388,6 @@ function AppFrame() {
       {trip ? (
         <LakadSettingsSheet
           open={settingsOpen}
-          onDeleteTrip={() => {
-            run(store.deleteTrip())
-            router.push("/")
-          }}
           onOpenChange={setSettingsOpen}
         />
       ) : null}

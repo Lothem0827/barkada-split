@@ -229,6 +229,19 @@ export async function upsertRemoteTrip(trip: Trip, expectedUpdatedAt?: string | 
   return { ok: true as const, message: "", taken: false, stale: false, trip: payload, uid }
 }
 
+export async function deleteRemoteTrip(tripId: string) {
+  const supabase = getSupabase()
+  if (!supabase) return { ok: false as const, message: "offline" }
+  const uid = await ensureAnonymousSession()
+  if (!uid) return { ok: false as const, message: "no session" }
+  const { error } = await supabase.from("lakads").delete().eq("id", tripId)
+  if (error) {
+    console.warn("deleteRemoteTrip", error.message)
+    return { ok: false as const, message: error.message }
+  }
+  return { ok: true as const, message: "" }
+}
+
 export async function claimSeatRemote(input: {
   tripId: string
   memberId: string | "new"

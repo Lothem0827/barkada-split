@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
-import { bindSeat, excludeFromPastBills, matchesGcashLast4, profileFromClaimedSeats, seatStatus } from "../lib/claim.ts"
+import { bindSeat, matchesGcashLast4, profileFromClaimedSeats, seatStatus } from "../lib/claim.ts"
 import { isValidGcash, sanitizeGcash } from "../lib/gcash.ts"
-import { balances, distribute, lvl, parsePeso, peso, sharesOf, totalOf, transfers, wrappedStats } from "../lib/calc.ts"
+import { balances, canMemberLeaveTrip, distribute, explainMemberBalance, getTripDeleteStatus, lvl, memberCanRemove, parsePeso, peso, sharesOf, totalOf, transfers, wrappedStats } from "../lib/calc.ts"
 import { hydrateState } from "../lib/hydrate.ts"
 import { inviteUrl, isJoinCode, makeJoinCode, normalizeJoinCode, parseJoinCodeFromInput } from "../lib/join-code.ts"
 import { encode } from "uqr"
@@ -11,6 +11,7 @@ import {
   recentBarkadaNames,
   splitNameDraft,
   titleCaseName,
+  titleCaseText,
 } from "../lib/member-names.ts"
 import { t, takenNicknameMessage } from "../lib/i18n.ts"
 import { classifyLinkGoogleError, oauthErrorFromUrl } from "../lib/supabase.ts"
@@ -66,7 +67,6 @@ import {
   findTakenMember,
   findTakenName,
   gcashOf,
-  memberCanRemove,
   memberName,
   nameKey,
   resolvePairNudges,
@@ -104,10 +104,29 @@ function checkTrip(trip: Trip, label: string, now = Date.now()) {
   const back = importTrip(exportTrip(trip))
   assert.deepEqual(back, trip, `${label}: import(export(trip)) round-trips`)
   wrappedStats(trip, now)
+
+  for (const member of trip.members) {
+    const math = explainMemberBalance(trip, member.id)
+    assert.equal(math.netBalance, bals[member.id], `${label}: math net ${member.id}`)
+    assert.equal(
+      math.totalPaidByMe - math.totalMyConsumption + math.confirmedSentByMe - math.confirmedReceivedByMe,
+      math.netBalance,
+      `${label}: math identity ${member.id}`,
+    )
+  }
 }
 
 const state = seed()
 for (const trip of state.lakads) checkTrip(trip, trip.name)
+{
+  const palsMath = explainMemberBalance(state.lakads[0], "pals")
+  const cake = palsMath.lineItems.find((item) => item.id === "e4")
+  assert.equal(cake?.isLibreForMe, true)
+  assert.equal(
+    palsMath.lineItems.some((item) => item.id === "e6"),
+    false,
+  )
+}
 console.log("ok  seed trips: balances, shares, transfers, round-trip")
 
 const empty: Trip = {
@@ -384,20 +403,37 @@ console.log("ok  join codes + seat claim locks")
     ],
     payments: [],
   }
-  const withNew = { ...base, members: [...base.members, { id: "c", name: "C", gcash: "" }] }
-  const future = excludeFromPastBills(withNew, "c")
-  const even = future.expenses[0]
-  assert.equal(even.method, "exclude")
-  assert.deepEqual(even.ex, ["c"])
-  const futureShares = sharesOf(future, even)
+  const late = { ...base, members: [...base.members, { id: "c", name: "C", gcash: "", joinedAt: 2 }] }
+  const even = late.expenses[0]
+  assert.equal(even.method, "even")
+  assert.deepEqual(even.ex, [])
+  const futureShares = sharesOf(late, even)
   assert.equal(futureShares.c, undefined)
   assert.equal((futureShares.a || 0) + (futureShares.b || 0), 10000)
-  const pastShares = sharesOf(withNew, withNew.expenses[0])
+  const included = { ...base, members: [...base.members, { id: "c", name: "C", gcash: "" }] }
+  const pastShares = sharesOf(included, included.expenses[0])
   assert.equal(pastShares.c, 3333)
-  assert.ok(even.ts >= base.expenses[0].ts)
-  const merged = mergeTrip(future, withNew, true)
-  assert.equal(merged.expenses[0].method, "exclude")
-  assert.deepEqual(merged.expenses[0].ex, ["c"])
+  const libre = {
+    ...late,
+    expenses: [{ ...even, method: "libre" as const, ex: ["b"] }],
+  }
+  const libreShares = sharesOf(libre, libre.expenses[0])
+  assert.equal(libreShares.c, undefined)
+  assert.equal(libreShares.a, 10000)
+  assert.deepEqual(libre.expenses[0].ex, ["b"])
+  const after = { ...late, expenses: [{ ...even, id: "e2", at: 3 }] }
+  const afterShares = sharesOf(after, after.expenses[0])
+  assert.ok((afterShares.c || 0) > 0)
+  const seated = bindSeat(base, "new", { name: "C", gcash: "", avatar: "😎" }, "uid-c")
+  assert.equal(seated.ok, true)
+  if (seated.ok) {
+    const newbie = seated.trip.members.find((member) => member.name === "C")
+    assert.ok(newbie?.joinedAt)
+    assert.equal(sharesOf(seated.trip, seated.trip.expenses[0])[newbie!.id], undefined)
+  }
+  const merged = mergeTrip(late, included, true)
+  assert.equal(merged.members.find((member) => member.id === "c")?.joinedAt, 2)
+  assert.equal(sanitizeTrip(late).members.find((member) => member.id === "c")?.joinedAt, 2)
   console.log("ok  late-comer future vs past pantay")
 }
 
@@ -616,6 +652,42 @@ function liveExpense(id: string, addedBy: string, ts: number): Expense {
   }
   assert.equal(memberCanRemove(paid, "b"), false)
   assert.equal(memberCanRemove({ ...trip, members: trip.members.slice(0, 1) }, "a"), false)
+
+  const even: Trip = {
+    ...trip,
+    expenses: [{ ...liveExpense("e1", "a", 1), amount: 30000, at: 1 }],
+  }
+  const settled: Trip = {
+    ...even,
+    payments: [{ id: "p1", from: "b", to: "a", amount: 10000, status: "confirmed", ts: 2, daysLate: 0 }],
+  }
+  assert.equal(balances(settled).b, 0)
+  assert.equal(memberCanRemove(settled, "b"), true)
+  assert.equal(memberCanRemove(settled, "c"), false)
+  const gone: Trip = {
+    ...settled,
+    members: settled.members.map((member) => (member.id === "b" ? { ...member, leftAt: 3 } : member)),
+  }
+  assert.equal(balances(gone).a, balances(settled).a)
+  assert.equal(balances(gone).c, balances(settled).c)
+  assert.equal(balances(gone).b, 0)
+  assert.equal(memberCanRemove(gone, "b"), false)
+  const later: Trip = {
+    ...gone,
+    expenses: [...gone.expenses, { ...liveExpense("e2", "a", 4), amount: 20000, at: 4 }],
+  }
+  assert.ok((sharesOf(later, later.expenses[0]!)["b"] || 0) > 0)
+  assert.equal(sharesOf(later, later.expenses[1]!)["b"], undefined)
+  const latecomer: Trip = {
+    ...trip,
+    expenses: [{ ...liveExpense("e1", "a", 1), at: 1 }],
+    members: [...trip.members, { id: "d", name: "D", gcash: "", joinedAt: 2 }],
+  }
+  assert.equal(memberCanRemove(latecomer, "d"), true)
+  const snap = importTrip(exportTrip(gone))
+  assert.equal(snap.members.find((member) => member.id === "b")?.leftAt, 3)
+  const merged = mergeTrip(trip, gone, false)
+  assert.equal(merged.members.find((member) => member.id === "b")?.leftAt, 3)
   console.log("ok  memberCanRemove")
 }
 
@@ -684,6 +756,9 @@ function liveExpense(id: string, addedBy: string, ts: number): Expense {
   assert.equal(titleCaseName("Jigs 🏄‍♂️"), "Jigs 🏄‍♂️")
   assert.equal(titleCaseName("<script>Bea"), "Scriptbea")
   assert.equal(titleCaseName(""), "")
+  assert.equal(titleCaseText("taxi"), "Taxi")
+  assert.equal(titleCaseText("  halo-halo deluxe  "), "Halo-halo Deluxe")
+  assert.equal(titleCaseText("KBBQ"), "Kbbq")
   assert.equal(hasNameSeparator("Carl,"), true)
   assert.equal(hasNameSeparator("Carl"), false)
   assert.equal(hasNameSeparator("Carl & Mel"), true)
@@ -1464,6 +1539,86 @@ function liveExpense(id: string, addedBy: string, ts: number): Expense {
   assert.equal(back.expenses[1]?.photoUrl, undefined)
   assert.equal(sanitizeTrip({ ...empty, coverPhotoUrl: "javascript:alert(1)" }).coverPhotoUrl, undefined)
   console.log("ok  memory photos persist and export strips data URLs")
+}
+
+{
+  const emptyStatus = getTripDeleteStatus(empty)
+  assert.equal(emptyStatus.canDelete, true)
+  assert.equal(emptyStatus.isEmptyTrip, true)
+  assert.equal(emptyStatus.unsettledTransferCount, 0)
+  assert.equal(canMemberLeaveTrip(empty, "a").canLeave, true)
+  assert.equal(canMemberLeaveTrip(empty, "ghost").canLeave, false)
+
+  const pair = {
+    ...empty,
+    id: "t-del",
+    name: "Delete Me",
+    members: [
+      { id: "a", name: "A", gcash: "" },
+      { id: "b", name: "B", gcash: "" },
+    ],
+    expenses: [
+      {
+        id: "e-del",
+        title: "Halo",
+        amount: 10000,
+        sc: false,
+        payer: "a",
+        method: "even" as const,
+        ex: [],
+        items: [],
+        addedBy: "a",
+        status: "approved" as const,
+        ts: 1,
+      },
+    ],
+  }
+  const openStatus = getTripDeleteStatus(pair)
+  assert.equal(openStatus.canDelete, false)
+  assert.ok(openStatus.unsettledTransferCount > 0)
+  assert.equal(canMemberLeaveTrip(pair, "b").canLeave, false)
+
+  const pending = {
+    ...pair,
+    expenses: [{ ...pair.expenses[0], status: "pending" as const }],
+  }
+  assert.equal(getTripDeleteStatus(pending).canDelete, false)
+  assert.equal(getTripDeleteStatus(pending).pendingExpenseCount, 1)
+  assert.equal(canMemberLeaveTrip(pending, "a").canLeave, false)
+
+  const sent = {
+    ...pair,
+    payments: [
+      { id: "p-sent", from: "b", to: "a", amount: 5000, status: "sent" as const, ts: 2, daysLate: 0 },
+    ],
+  }
+  assert.equal(getTripDeleteStatus(sent).canDelete, false)
+  assert.equal(getTripDeleteStatus(sent).unconfirmedPaymentCount, 1)
+  assert.equal(canMemberLeaveTrip(sent, "b").canLeave, false)
+
+  const settled = {
+    ...pair,
+    payments: [
+      { id: "p-ok", from: "b", to: "a", amount: 5000, status: "confirmed" as const, ts: 2, daysLate: 0 },
+    ],
+  }
+  assert.equal(getTripDeleteStatus(settled).canDelete, true)
+  assert.equal(getTripDeleteStatus(settled).unsettledTransferCount, 0)
+  assert.equal(canMemberLeaveTrip(settled, "b").canLeave, true)
+
+  const extraSent = {
+    ...settled,
+    payments: [
+      ...settled.payments,
+      { id: "p-extra", from: "b", to: "a", amount: 100, status: "sent" as const, ts: 3, daysLate: 0 },
+    ],
+  }
+  assert.equal(getTripDeleteStatus(extraSent).canDelete, false)
+  assert.equal(getTripDeleteStatus(extraSent).unconfirmedPaymentCount, 1)
+
+  assert.deepEqual(hydrateState({ lakads: [] }).hiddenTripIds, [])
+  assert.deepEqual(hydrateState({ lakads: [], hiddenTripIds: ["t-1", 2] }).hiddenTripIds, ["t-1"])
+  console.log("ok  trip delete / leave eligibility")
 }
 
 console.log("\nAll checks passed.")

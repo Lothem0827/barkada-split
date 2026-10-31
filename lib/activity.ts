@@ -4,6 +4,7 @@ import { inviteUrl } from "@/lib/join-code"
 import {
   ACTIVITY_LOG_CAP,
   activityLogOf,
+  activeMembers,
   emergencyLogOf,
   logActivity,
   memberName,
@@ -378,7 +379,7 @@ export function wrappedShareText(trip: Trip, now: number) {
   const nameOf = (id: string) => memberName(trip, id)
   return [
     "🧾 TRIP WRAPPED — " + trip.name,
-    "Total " + peso(stats.total) + " · " + trip.members.length + " pax · " + stats.days + " days",
+    "Total " + peso(stats.total) + " · " + activeMembers(trip).length + " pax · " + stats.days + " days",
     "🏦 The Financier: " + (stats.financier ? nameOf(stats.financier.id) : "—"),
     "🎁 Treat magnet: " + (stats.libreMagnet ? nameOf(stats.libreMagnet.id) : "—"),
     "⚡ Fastest Hands: " + (stats.fastest ? nameOf(stats.fastest.id) : "—"),

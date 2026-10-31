@@ -170,5 +170,6 @@ export function seed(now = Date.now()): AppState {
     pinHashes: {},
     recoveryPinHash: "",
     mockGoogleEmail: "",
+    hiddenTripIds: [],
   }
 }

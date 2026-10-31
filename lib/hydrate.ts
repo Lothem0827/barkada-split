@@ -65,5 +65,8 @@ export function hydrateState(parsed: unknown, fromV5 = false): AppState {
         : {},
     recoveryPinHash: typeof row.recoveryPinHash === "string" ? row.recoveryPinHash : "",
     mockGoogleEmail: typeof row.mockGoogleEmail === "string" ? row.mockGoogleEmail.trim().slice(0, 80) : "",
+    hiddenTripIds: Array.isArray(row.hiddenTripIds)
+      ? row.hiddenTripIds.filter((id): id is string => typeof id === "string")
+      : [],
   }
 }

@@ -1,6 +1,6 @@
 import { balances, transfers } from "@/lib/calc"
 import { pendingQueueCount, type MascotMood } from "@/lib/companion-ai"
-import { nameKey, newestUnreadNudge, type Member, type Tab, type Trip } from "@/lib/types"
+import { activeMembers, nameKey, newestUnreadNudge, type Member, type Tab, type Trip } from "@/lib/types"
 
 export type HomeIds = { authUid: string; profileName: string; as?: string }
 
@@ -15,16 +15,17 @@ export type AttentionItem = {
 }
 
 export function homeSeat(trip: Trip, ids: HomeIds): Member | null {
+  const roster = activeMembers(trip)
   if (ids.authUid) {
-    const claimed = trip.members.find((member) => member.claimedByUid === ids.authUid)
+    const claimed = roster.find((member) => member.claimedByUid === ids.authUid)
     if (claimed) return claimed
   }
   const nick = nameKey(ids.profileName)
   if (nick) {
-    const named = trip.members.find((member) => nameKey(member.name) === nick)
+    const named = roster.find((member) => nameKey(member.name) === nick)
     if (named) return named
   }
-  if (ids.as) return trip.members.find((member) => member.id === ids.as) ?? null
+  if (ids.as) return roster.find((member) => member.id === ids.as) ?? null
   return null
 }
 

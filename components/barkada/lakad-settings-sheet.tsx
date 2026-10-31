@@ -1,11 +1,11 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import {
   CrownIcon,
   SettingsIcon,
   SirenIcon,
-  Trash2Icon,
   TriangleAlertIcon,
   XIcon,
 } from "lucide-react"
@@ -18,21 +18,32 @@ import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { toast } from "@/components/ui/toast"
+import { canMemberLeaveTrip, getTripDeleteStatus, peso } from "@/lib/calc"
 import { t } from "@/lib/i18n"
 import { useBarkada } from "@/lib/store"
-import { emergencyLogOf, type EmergencyAction, type Lang, type RoundTo } from "@/lib/types"
+import { activeMembers, emergencyLogOf, type EmergencyAction, type Lang, type RoundTo } from "@/lib/types"
 
 export function LakadSettingsSheet({
   open,
   onOpenChange,
-  onDeleteTrip,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onDeleteTrip: () => void
 }) {
-  const { state, trip, treasurer, renameTrip, setOpen, setRoundTo, setTab, handoff, emergencyTakeover } =
-    useBarkada()
+  const router = useRouter()
+  const {
+    state,
+    trip,
+    treasurer,
+    renameTrip,
+    setOpen,
+    setRoundTo,
+    setTab,
+    handoff,
+    emergencyTakeover,
+    deleteTrip,
+    hideTripFromHome,
+  } = useBarkada()
   const { lang, as } = state
   const [lakadName, setLakadName] = useState("")
   const [pendingHandoffId, setPendingHandoffId] = useState("")
@@ -40,6 +51,8 @@ export function LakadSettingsSheet({
   const [takeoverId, setTakeoverId] = useState("")
   const [takeoverReason, setTakeoverReason] = useState("")
   const [takeoverError, setTakeoverError] = useState("")
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [confirmingLeave, setConfirmingLeave] = useState(false)
 
   useEffect(() => {
     if (!open) {
@@ -47,6 +60,8 @@ export function LakadSettingsSheet({
       setTakeoverOpen(false)
       setTakeoverReason("")
       setTakeoverError("")
+      setConfirmingDelete(false)
+      setConfirmingLeave(false)
       return
     }
     if (trip) setLakadName(trip.name)
@@ -54,13 +69,16 @@ export function LakadSettingsSheet({
 
   if (!trip) return null
   const live = trip
-  const others = live.members.filter((member) => member.id !== live.treasurer)
+  const roster = activeMembers(live)
+  const others = roster.filter((member) => member.id !== live.treasurer)
   const pending = others.find((member) => member.id === pendingHandoffId) ?? null
-  const treasName = live.members.find((member) => member.id === live.treasurer)?.name || "?"
+  const treasName = roster.find((member) => member.id === live.treasurer)?.name || "?"
   const emergencyLog = emergencyLogOf(live)
-  const takeoverCandidates = live.members.filter((member) => member.id !== live.treasurer)
+  const takeoverCandidates = roster.filter((member) => member.id !== live.treasurer)
   const selectedTakeover =
     takeoverCandidates.some((member) => member.id === takeoverId) ? takeoverId : takeoverCandidates[0]?.id || ""
+  const deleteStatus = getTripDeleteStatus(live)
+  const leaveStatus = canMemberLeaveTrip(live, as)
 
   function notify(message: string) {
     toast.add({ title: message, timeout: 1800 })
@@ -327,22 +345,66 @@ export function LakadSettingsSheet({
           ) : null}
 
           {treasurer ? (
-            <div className="overflow-hidden rounded-2xl bg-muted">
-              <ArmButton
-                variant="destructive"
-                className="w-full"
-                label={
-                  <>
-                    <Trash2Icon className="size-4" />
-                    {t(lang, "delTrip")}
-                  </>
-                }
-                armedLabel={t(lang, "sureDelForever")}
-                cancelLabel={t(lang, "cancel")}
-                onConfirm={onDeleteTrip}
+            !deleteStatus.canDelete ? (
+              <LockedDeleteCard
+                lang={lang}
+                status={deleteStatus}
+                onGoReview={() => {
+                  onOpenChange(false)
+                  setTab(deleteStatus.pendingExpenseCount > 0 ? "gastos" : "hatian")
+                }}
               />
-            </div>
-          ) : null}
+            ) : (
+              <div className="space-y-2 rounded-2xl border border-border bg-muted p-3.5">
+                <p className="text-xs font-medium text-emerald-600">{t(lang, "delTripSquare")}</p>
+                {!deleteStatus.isEmptyTrip ? (
+                  <p className="text-xs text-muted-foreground">{t(lang, "delTripWrappedTip")}</p>
+                ) : null}
+                {confirmingDelete ? (
+                  <div>
+                    <p className="text-sm">{t(lang, "delTripWarn").replace("{name}", live.name)}</p>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <Button
+                        className="btn-danger min-h-[44px] font-extrabold"
+                        onClick={() => {
+                          const result = deleteTrip(live.id)
+                          notify(result.message)
+                          if (!result.ok) return
+                          onOpenChange(false)
+                          router.push("/")
+                        }}
+                      >
+                        {t(lang, "delTripYes")}
+                      </Button>
+                      <Button variant="secondary" className="btn-soft min-h-[44px]" onClick={() => setConfirmingDelete(false)}>
+                        {t(lang, "cancel")}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button className="btn-danger min-h-[44px] w-full" onClick={() => setConfirmingDelete(true)}>
+                    {t(lang, "delTripForever")}
+                  </Button>
+                )}
+              </div>
+            )
+          ) : (
+            <MemberLeaveCard
+              lang={lang}
+              treasName={treasName}
+              leaveStatus={leaveStatus}
+              confirming={confirmingLeave}
+              onArm={() => setConfirmingLeave(true)}
+              onCancel={() => setConfirmingLeave(false)}
+              onLeave={() => {
+                const result = hideTripFromHome(live.id)
+                notify(result.message)
+                if (!result.ok) return
+                onOpenChange(false)
+                router.push("/")
+              }}
+            />
+          )}
 
           {emergencyLog.length ? (
             <section className="flex flex-col gap-2">
@@ -367,6 +429,87 @@ export function LakadSettingsSheet({
         </div>
       </DrawerContent>
     </Drawer>
+  )
+}
+
+function LockedDeleteCard({
+  lang,
+  status,
+  onGoReview,
+}: {
+  lang: Lang
+  status: ReturnType<typeof getTripDeleteStatus>
+  onGoReview: () => void
+}) {
+  return (
+    <div className="space-y-2 rounded-2xl border border-destructive/20 bg-destructive/5 p-3.5">
+      <div className="flex min-h-[44px] w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-border bg-background text-sm font-bold text-muted-foreground opacity-75">
+        {t(lang, "delTripLocked")}
+      </div>
+      <ul className="space-y-1 text-xs text-muted-foreground">
+        <li>{t(lang, "delTripProtect")}</li>
+        {status.unsettledTransferCount > 0 ? (
+          <li>
+            {t(lang, "delTripUnsettled")
+              .replace("{n}", String(status.unsettledTransferCount))
+              .replace("{amt}", peso(status.unsettledTotalAmount))}
+          </li>
+        ) : null}
+        {status.pendingExpenseCount > 0 ? (
+          <li>{t(lang, "delTripPending").replace("{n}", String(status.pendingExpenseCount))}</li>
+        ) : null}
+        {status.unconfirmedPaymentCount > 0 ? (
+          <li>{t(lang, "delTripUnconfirmed").replace("{n}", String(status.unconfirmedPaymentCount))}</li>
+        ) : null}
+      </ul>
+      <Button type="button" variant="secondary" className="btn-soft min-h-[38px] w-full text-xs" onClick={onGoReview}>
+        {t(lang, "delTripGoSettle")}
+      </Button>
+    </div>
+  )
+}
+
+function MemberLeaveCard({
+  lang,
+  treasName,
+  leaveStatus,
+  confirming,
+  onArm,
+  onCancel,
+  onLeave,
+}: {
+  lang: Lang
+  treasName: string
+  leaveStatus: ReturnType<typeof canMemberLeaveTrip>
+  confirming: boolean
+  onArm: () => void
+  onCancel: () => void
+  onLeave: () => void
+}) {
+  return (
+    <div className="space-y-2 rounded-2xl bg-muted p-3.5">
+      <p className="text-xs text-muted-foreground">{t(lang, "delTripOnlyT").replace("{name}", treasName)}</p>
+      {leaveStatus.canLeave ? (
+        confirming ? (
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <Button className="btn-soft min-h-[44px]" onClick={onLeave}>
+              {t(lang, "hideTripYes")}
+            </Button>
+            <Button variant="secondary" className="btn-soft min-h-[44px]" onClick={onCancel}>
+              {t(lang, "cancel")}
+            </Button>
+          </div>
+        ) : (
+          <Button variant="secondary" className="btn-soft min-h-[44px] w-full" onClick={onArm}>
+            {t(lang, "hideTripBtn")}
+          </Button>
+        )
+      ) : (
+        <p className="rounded-full bg-background px-3 py-2 text-center text-xs text-muted-foreground">
+          {t(lang, "hideTripLocked").replace("{amt}", peso(Math.abs(leaveStatus.myNetBalance)))}
+        </p>
+      )}
+    </div>
   )
 }
 

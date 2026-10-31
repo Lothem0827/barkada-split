@@ -31,7 +31,7 @@ import { markJustCreated, parseJoinCodeFromInput } from "@/lib/join-code"
 import { recentBarkadaNames, splitNameDraft } from "@/lib/member-names"
 import { estMessage } from "@/lib/reminders"
 import { useBarkada } from "@/lib/store"
-import type { EstDraft } from "@/lib/types"
+import { activeMembers, type EstDraft } from "@/lib/types"
 
 export function TripSheet({
   open,
@@ -436,7 +436,7 @@ export function EstimatorSheet({
       { name: lang === "tl" ? "Pagkain" : "Food", price: "" },
       { name: "Activities", price: "" },
     ],
-    people: String(trip?.members.length || 4),
+    people: String(trip ? activeMembers(trip).length || 4 : 4),
     buffer: 10,
     round: 5000,
   })

@@ -23,7 +23,7 @@ import { t } from "@/lib/i18n"
 import { normalizeJoinCode } from "@/lib/join-code"
 import { fetchTripPreview, type TripPreview } from "@/lib/supabase"
 import { useBarkada, useBarkadaStore } from "@/lib/store"
-import { AVATARS, memberName, type Member, type Trip } from "@/lib/types"
+import { AVATARS, activeMembers, memberName, type Member, type Trip } from "@/lib/types"
 
 const QUICK_AVATARS = AVATARS.slice(0, 8)
 
@@ -117,7 +117,7 @@ export function JoinView({
 
   const featured = useMemo(() => {
     if (!trip || !seat) return null
-    const match = trip.members.find((member) => member.id === seat)
+    const match = activeMembers(trip).find((member) => member.id === seat)
     if (!match || match.claimedByUid) return null
     return match
   }, [trip, seat])
@@ -177,7 +177,7 @@ export function JoinView({
     router.replace("/lakad/" + (result.tripId || trip.id))
   }
 
-  const gridMembers = trip ? (showAll || !featured ? trip.members : []) : []
+  const gridMembers = trip ? (showAll || !featured ? activeMembers(trip) : []) : []
 
   const seatName = adding ? name.trim() : member?.name || ""
 

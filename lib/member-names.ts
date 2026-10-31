@@ -20,6 +20,10 @@ function titleCaseWord(word: string) {
     .join("")
 }
 
+export function titleCaseText(value: string) {
+  return value.trim().replace(/\s+/g, " ").replace(/\S+/g, titleCaseWord)
+}
+
 export function sanitizeName(value: string) {
   return value
     .replace(/[<>]/g, "")

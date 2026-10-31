@@ -25,7 +25,7 @@ import {
 } from "@/lib/home-dashboard"
 import { t } from "@/lib/i18n"
 import { useBarkada } from "@/lib/store"
-import { initial, memberName } from "@/lib/types"
+import { activeMembers, initial, memberName } from "@/lib/types"
 
 export function HomeView({
   onNewTrip,
@@ -209,7 +209,7 @@ export function HomeView({
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="flex px-1">
-                      {trip.members.slice(0, 5).map((member, index) => (
+                      {activeMembers(trip).slice(0, 5).map((member, index) => (
                         <Avatar key={member.id} size="sm" className={index ? "-ml-1.5" : undefined}>
                           <AvatarFallback>{initial(member.name)}</AvatarFallback>
                         </Avatar>
@@ -218,7 +218,7 @@ export function HomeView({
                     <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
                       <UsersIcon className="mr-0.5 inline size-3 align-[-2px]" />
                       {t(lang, "homeTripPeople")
-                        .replace("{n}", String(trip.members.length))
+                        .replace("{n}", String(activeMembers(trip).length))
                         .replace("{name}", memberName(trip, trip.treasurer))}
                     </p>
                     <span className="shrink-0 text-xs font-semibold tabular-nums">

@@ -31,7 +31,18 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { balances, dayStr, daysOwed, fmtAgo, fmtDate, peso, plain, potOf, transfers } from "@/lib/calc"
+import {
+  balances,
+  dayStr,
+  daysOwed,
+  explainMemberBalance,
+  fmtAgo,
+  fmtDate,
+  peso,
+  plain,
+  potOf,
+  transfers,
+} from "@/lib/calc"
 import { toast } from "@/components/ui/toast"
 import { sulkMeta, t, type CopyKey } from "@/lib/i18n"
 import {
@@ -46,6 +57,7 @@ import { reminder } from "@/lib/reminders"
 import { useBarkada } from "@/lib/store"
 import {
   PERSONAS,
+  activeMembers,
   digits,
   gcashOf,
   hasCooldownNudge,
@@ -88,6 +100,7 @@ export function HatianView({
   const [hatianScope, setHatianScope] = useState<HatianScope>(treasurer ? "all" : "mine")
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null)
   const [gcashMemberId, setGcashMemberId] = useState<string | null>(null)
+  const [expandedMathId, setExpandedMathId] = useState<string | null>(null)
   const [payBusy, setPayBusy] = useState(false)
   const payBusyRef = useRef(false)
   const cardRefs = useRef<Record<string, HTMLElement | null>>({})
@@ -134,7 +147,7 @@ export function HatianView({
     .slice()
     .sort((a, b) => b.ts - a.ts)
   const pot = potOf(list)
-  const members = trip.members.slice().sort((a, b) => bals[a.id] - bals[b.id])
+  const members = activeMembers(trip).slice().sort((a, b) => bals[a.id] - bals[b.id])
   const selectedPayment = trip.payments.find((payment) => payment.id === selectedPaymentId) ?? null
 
   function keyOf(row: Transfer) {
@@ -319,6 +332,17 @@ export function HatianView({
                 ) : null}
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
+                <MathBreakdown
+                  trip={trip}
+                  row={row}
+                  lang={lang}
+                  viewerId={as}
+                  expanded={expandedMathId === row.from + "-" + row.to}
+                  onToggle={() => {
+                    const id = row.from + "-" + row.to
+                    setExpandedMathId((current) => (current === id ? null : id))
+                  }}
+                />
                 <SulkMeter days={daysOwed(trip, row.from, now)} lang={lang} />
                 {role === "debtor" && incoming ? (
                   <Alert>
@@ -676,6 +700,143 @@ function NudgeComposer({
           {t(lang, "copyForGc")}
         </CopyAction>
       </div>
+    </div>
+  )
+}
+
+function signedPeso(cents: number) {
+  return (cents > 0 ? "+" : "") + peso(cents)
+}
+
+function MathBreakdown({
+  trip,
+  row,
+  lang,
+  viewerId,
+  expanded,
+  onToggle,
+}: {
+  trip: Trip
+  row: Transfer
+  lang: Lang
+  viewerId: string
+  expanded: boolean
+  onToggle: () => void
+}) {
+  const mine = viewerId === row.from
+  const fromName = memberName(trip, row.from)
+  const toName = memberName(trip, row.to)
+  const who = mine ? t(lang, "you") : fromName
+  const pill = mine
+    ? t(lang, "mathWhyDebtor").replace("{amt}", peso(row.pay)).replace("{name}", toName)
+    : t(lang, "mathWhyOther").replace("{name}", fromName)
+  const math = expanded ? explainMemberBalance(trip, row.from) : null
+  const payNet = math ? math.confirmedSentByMe - math.confirmedReceivedByMe : 0
+
+  return (
+    <div className="min-w-0">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={onToggle}
+        className="flex min-h-[34px] max-w-full items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1 text-left text-xs font-semibold transition active:scale-95"
+      >
+        <span className="min-w-0 wrap-break-word">🧮 {pill}</span>
+        <span className="shrink-0">{expanded ? "▴" : "▾"}</span>
+      </button>
+      {math ? (
+        <div className="mt-2 space-y-3 rounded-xl border border-border bg-background/70 p-3 font-mono text-xs">
+          <div className="space-y-1.5">
+            <p className="font-sans font-semibold">🧾 {t(lang, "mathReceipt")}</p>
+            {math.lineItems.map((item) => {
+              if (item.myShare > 0 && item.iPaid === 0) {
+                return (
+                  <div key={item.id} className="flex items-start justify-between gap-2">
+                    <span className="min-w-0 wrap-break-word">
+                      {item.title} ({t(lang, "mathPaidBy").replace("{name}", item.payerName)})
+                    </span>
+                    <span className="shrink-0 text-l3 tabular-nums">{peso(-item.myShare)}</span>
+                  </div>
+                )
+              }
+              if (item.iPaid > 0) {
+                return (
+                  <div key={item.id} className="flex items-start justify-between gap-2">
+                    <span className="min-w-0 wrap-break-word">
+                      {item.title} (
+                      {t(lang, "mathFronted")
+                        .replace("{who}", who)
+                        .replace("{paid}", peso(item.iPaid))
+                        .replace("{share}", peso(item.myShare))}
+                      )
+                    </span>
+                    <span className="shrink-0 text-l0 tabular-nums">{signedPeso(item.netImpact)}</span>
+                  </div>
+                )
+              }
+              if (item.isLibreForMe) {
+                return (
+                  <div key={item.id} className="flex items-start justify-between gap-2">
+                    <span className="min-w-0 wrap-break-word">
+                      🎁 {item.title} ({t(lang, "mathLibre")})
+                    </span>
+                    <span className="shrink-0 tabular-nums">{peso(0)}</span>
+                  </div>
+                )
+              }
+              return null
+            })}
+            {math.confirmedSentByMe > 0 || math.confirmedReceivedByMe > 0 ? (
+              <div className="flex items-start justify-between gap-2">
+                <span className="min-w-0 wrap-break-word">✅ {t(lang, "mathConfirmedPays")}</span>
+                <span className="shrink-0 tabular-nums">{signedPeso(payNet)}</span>
+              </div>
+            ) : null}
+          </div>
+          <div className="space-y-1 border-t border-dashed border-border pt-2">
+            <p className="font-sans font-semibold">🧮 {t(lang, "mathFormula")}</p>
+            <div className="flex items-start justify-between gap-2">
+              <span className="min-w-0 wrap-break-word">{t(lang, "mathConsumed").replace("{who}", who)}</span>
+              <span className="shrink-0 tabular-nums">{peso(-math.totalMyConsumption)}</span>
+            </div>
+            <div className="flex items-start justify-between gap-2">
+              <span className="min-w-0 wrap-break-word">{t(lang, "mathAbono").replace("{who}", who)}</span>
+              <span className="shrink-0 text-l0 tabular-nums">{signedPeso(math.totalPaidByMe)}</span>
+            </div>
+            {math.confirmedSentByMe > 0 || math.confirmedReceivedByMe > 0 ? (
+              <div className="flex items-start justify-between gap-2">
+                <span className="min-w-0 wrap-break-word">{t(lang, "mathConfirmed")}</span>
+                <span className="shrink-0 tabular-nums">{signedPeso(payNet)}</span>
+              </div>
+            ) : null}
+            <div className="flex items-start justify-between gap-2 font-semibold">
+              <span className="min-w-0 wrap-break-word">
+                {mine
+                  ? t(lang, "mathNetOweYou").replace("{amt}", peso(Math.abs(math.netBalance)))
+                  : t(lang, "mathNetOweThem")
+                      .replace("{name}", fromName)
+                      .replace("{amt}", peso(Math.abs(math.netBalance)))}
+              </span>
+            </div>
+            {row.roundingDiff !== 0 ? (
+              <p className="min-w-0 wrap-break-word">
+                🪙{" "}
+                {t(lang, "mathButalAdj")
+                  .replace("{diff}", signedPeso(row.roundingDiff))
+                  .replace("{amt}", peso(row.pay))}
+              </p>
+            ) : null}
+          </div>
+          <div className="rounded-lg border border-primary/20 bg-primary/10 p-2.5 font-sans text-xs leading-relaxed">
+            🦦💡{" "}
+            {t(lang, "mathSmartSettle")
+              .replaceAll("{creditor}", toName)
+              .replace("{owed}", peso(balances(trip)[row.to] || 0))
+              .replace("{raw}", String(math.rawPairwiseCount))
+              .replace("{amt}", peso(row.pay))}
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

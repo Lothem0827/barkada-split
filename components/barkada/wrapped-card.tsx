@@ -8,7 +8,7 @@ import { dayStr, fmtDate, fmtDays, peso, wrappedStats } from "@/lib/calc"
 import { cycleWrappedRoast, getWrappedVerdict, wrappedRoastSeed } from "@/lib/companion-ai"
 import { memoryPhotosOf, type MemoryPhoto } from "@/lib/image-utils"
 import { t } from "@/lib/i18n"
-import { memberName, type Lang, type Trip } from "@/lib/types"
+import { activeMembers, memberName, type Lang, type Trip } from "@/lib/types"
 
 function Polaroid({ photo, big = false }: { photo: MemoryPhoto; big?: boolean }) {
   return (
@@ -96,7 +96,7 @@ export function WrappedCard({
   const rest = shots.slice(1)
 
   return (
-    <article className="receipt relative overflow-hidden bg-paper px-4 pt-6 pb-5 font-mono text-paper-ink shadow-sm">
+    <article className="receipt relative shrink-0 overflow-hidden bg-paper px-4 pt-6 pb-5 font-mono text-paper-ink shadow-sm">
       <div className="text-center">
         <div className="text-[10px] tracking-[0.12em] opacity-70">★ {t(lang, "presents")} ★</div>
         <div className="font-heading mt-1 text-4xl leading-none font-extrabold tracking-tight">
@@ -106,7 +106,7 @@ export function WrappedCard({
         </div>
         <div className="font-heading mt-2 text-lg leading-tight font-semibold wrap-break-word">{trip.name}</div>
         <div className="mt-0.5 text-[11px] opacity-75">
-          {range} · {trip.members.length} {t(lang, "pax")}
+          {range} · {activeMembers(trip).length} {t(lang, "pax")}
         </div>
       </div>
       {hero ? (

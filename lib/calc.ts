@@ -1,10 +1,15 @@
+import { titleCaseText } from "@/lib/member-names"
 import { DAY, memberOf, uiLang, type EstDraft, type Expense, type ExpenseDraft, type Item, type Lang, type Trip } from "@/lib/types"
 
 export {
   balances,
+  canMemberLeaveTrip,
   daysOwed,
   distribute,
+  explainMemberBalance,
+  getTripDeleteStatus,
   lvl,
+  memberCanRemove,
   potOf,
   sharesOf,
   totalOf,
@@ -12,6 +17,7 @@ export {
   weightsOf,
   wrappedStats,
 } from "@/lib/split-math"
+export type { BalanceLineItem, MemberMathBreakdown, TripDeleteStatus } from "@/lib/split-math"
 
 export function peso(cents: number) {
   let value = Math.round(cents || 0)
@@ -138,7 +144,7 @@ export function draftToExpense(trip: Trip, draft: ExpenseDraft): { e: DraftExpen
   if (amount > 1e11) errs.push("too-big")
   return {
     e: {
-      title: draft.title.trim().slice(0, 80),
+      title: titleCaseText(draft.title).slice(0, 80),
       amount: amount > 0 ? amount : 0,
       sc: !!draft.sc,
       payer: draft.payer,

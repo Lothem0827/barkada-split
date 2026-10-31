@@ -21,16 +21,9 @@ import {
   roundToActivity,
   seenZonedActivity,
 } from "@/lib/activity"
-import { daysOwed, draftErrorMessage, draftToExpense, totalOf } from "@/lib/calc"
+import { canMemberLeaveTrip, daysOwed, draftErrorMessage, draftToExpense, getTripDeleteStatus, memberCanRemove, totalOf } from "@/lib/calc"
 import { isValidGcash, sanitizeGcash } from "@/lib/gcash"
-import {
-  bindSeat,
-  excludeFromPastBills,
-  matchesGcashLast4,
-  profileFromClaimedSeats,
-  resetMemberLock,
-  seatStatus,
-} from "@/lib/claim"
+import { bindSeat, matchesGcashLast4, profileFromClaimedSeats, resetMemberLock, seatStatus } from "@/lib/claim"
 import { hydrateState } from "@/lib/hydrate"
 import { t, takenNicknameMessage } from "@/lib/i18n"
 import { makeJoinCode } from "@/lib/join-code"
@@ -49,6 +42,7 @@ import { importErrorMessage, importTrip as parseTrip } from "@/lib/snapshot"
 import {
   broadcastEmergencyTakeover,
   claimSeatRemote,
+  deleteRemoteTrip,
   resetSeatLockRemote,
   verifySeatPinRemote,
 } from "@/lib/supabase"
@@ -63,6 +57,7 @@ import {
   PREV_STORAGE_KEY,
   resolvePairNudges,
   STORAGE_KEY,
+  activeMembers,
   activeTrip,
   canEditExpense,
   claimMember,
@@ -73,7 +68,6 @@ import {
   isLang,
   isTreasurer,
   logActivity,
-  memberCanRemove,
   memberName,
   memberOf,
   isAvatar,
@@ -216,6 +210,18 @@ function withTrip(state: AppState, tripId: string, updater: (trip: Trip) => Trip
   return markDirty({ ...state, lakads }, tripId)
 }
 
+function dropTrip(state: AppState, tripId: string, extra?: Partial<AppState>): AppState {
+  return {
+    ...state,
+    ...extra,
+    lakads: state.lakads.filter((trip) => trip.id !== tripId),
+    activeId: null,
+    tab: "home",
+    screenshotMode: false,
+    dirtyIds: state.dirtyIds.filter((id) => id !== tripId),
+  }
+}
+
 function ensureViewer(state: AppState, trip: Trip) {
   if (trip.members.some((member) => member.id === state.as)) return state
   const mine = trip.members.find((member) => member.claimedByUid && member.claimedByUid === state.authUid)
@@ -239,6 +245,7 @@ function upsertTrip(state: AppState, trip: Trip, as: string, extras?: Partial<Ap
         screenshotMode: false,
         onboarded: true,
         showTestTools: false,
+        hiddenTripIds: state.hiddenTripIds.filter((id) => id !== trip.id),
       },
       trip
     ),
@@ -291,7 +298,8 @@ type BarkadaStore = {
   resetSeatLock: (memberId: string) => Promise<ActionResult>
   loadDemo: (draft?: OnboardDraft) => ActionResult
   replayOnboarding: () => ActionResult
-  deleteTrip: () => ActionResult
+  deleteTrip: (tripId: string) => ActionResult
+  hideTripFromHome: (tripId: string) => ActionResult
   resetDemo: () => ActionResult
   addExpense: (draft: ExpenseDraft) => ActionResult
   editExpense: (id: string, draft: ExpenseDraft) => ActionResult
@@ -335,6 +343,9 @@ export const useBarkadaStore = create<BarkadaStore>()(
           set((store) => ({ state: store.state.authUid === uidValue ? store.state : { ...store.state, authUid: uidValue } })),
         applyRemoteTrip: (trip, clearDirty) =>
           set((store) => {
+            if (store.state.hiddenTripIds.includes(trip.id) && !store.state.lakads.some((item) => item.id === trip.id)) {
+              return store
+            }
             const current = store.state.lakads.find((item) => item.id === trip.id)
             const dirty = store.state.dirtyIds.includes(trip.id)
             const next = current ? mergeTrip(current, trip, dirty && !clearDirty) : trip
@@ -455,7 +466,7 @@ export const useBarkadaStore = create<BarkadaStore>()(
             const incoming = parseTrip(code)
             const profile = sanitizeProfile(draft)
             if (memberId === "new" && !profile.name) return { ok: false, message: t(state.lang, "needYourName") }
-            if (memberId === "new" && incoming.members.length >= 60) return { ok: false, message: t(state.lang, "maxMembers") }
+            if (memberId === "new" && activeMembers(incoming).length >= 60) return { ok: false, message: t(state.lang, "maxMembers") }
             const bound = bindSeat(incoming, memberId, profile, state.authUid, { name: profile.name, gcash: profile.gcash })
             const ts = nowTs(state)
             if (!bound.ok) {
@@ -505,7 +516,7 @@ export const useBarkadaStore = create<BarkadaStore>()(
           const { state } = get()
           let lakads = state.lakads.slice()
           for (const trip of trips) {
-            if (!trip?.id || isSeedTripId(trip.id)) continue
+            if (!trip?.id || isSeedTripId(trip.id) || state.hiddenTripIds.includes(trip.id)) continue
             const index = lakads.findIndex((item) => item.id === trip.id)
             if (index >= 0) {
               const dirty = state.dirtyIds.includes(trip.id)
@@ -581,6 +592,7 @@ export const useBarkadaStore = create<BarkadaStore>()(
             }
           }
 
+          const priorIds = new Set(trip.members.map((member) => member.id))
           const remote = await claimSeatRemote({
             tripId: trip.id,
             memberId,
@@ -602,6 +614,14 @@ export const useBarkadaStore = create<BarkadaStore>()(
             if (bound.reason === "locked") return { ok: false, message: t(lang, trip.open ? "seatLocked" : "addSelfClosed") }
             return { ok: false, message: t(lang, "obNeedClaim") }
           }
+          const nextTrip = priorIds.has(bound.as)
+            ? bound.trip
+            : {
+                ...bound.trip,
+                members: bound.trip.members.map((member) =>
+                  member.id === bound.as && !member.joinedAt ? { ...member, joinedAt: Date.now() } : member
+                ),
+              }
 
           let pinHashes = state.pinHashes
           if (pin) {
@@ -612,7 +632,7 @@ export const useBarkadaStore = create<BarkadaStore>()(
 
           set({
             state: {
-              ...upsertTrip(state, logSeatClaimed(bound.trip, bound.as, nowTs(state)), bound.as, {
+              ...upsertTrip(state, logSeatClaimed(nextTrip, bound.as, nowTs(state)), bound.as, {
                 profile: bound.profile,
                 pinHashes,
               }),
@@ -677,12 +697,25 @@ export const useBarkadaStore = create<BarkadaStore>()(
           set({ state: emptyState(lang) })
           return { ok: true, message: t(lang, "replayDone") }
         },
-        deleteTrip: () => {
+        deleteTrip: (tripId) => {
           const { state } = get()
-          const active = activeTrip(state)
-          if (!active || !isTreasurer(state, active)) return { ok: false, message: t(state.lang, "onlyT") }
-          set({ state: withTrip(state, active.id, () => null) })
-          return { ok: true, message: t(state.lang, "deleted") }
+          const trip = state.lakads.find((item) => item.id === tripId)
+          if (!trip || !isTreasurer(state, trip)) return { ok: false, message: t(state.lang, "onlyT") }
+          if (!getTripDeleteStatus(trip).canDelete) return { ok: false, message: t(state.lang, "delTripLockedToast") }
+          set({ state: dropTrip(state, trip.id) })
+          if (!isSeedTripId(trip.id)) void deleteRemoteTrip(trip.id)
+          return { ok: true, message: t(state.lang, "deletedTrip").replace("{name}", trip.name) }
+        },
+        hideTripFromHome: (tripId) => {
+          const { state } = get()
+          const trip = state.lakads.find((item) => item.id === tripId)
+          if (!trip || isTreasurer(state, trip)) return { ok: false, message: t(state.lang, "hideTripOnlyMember") }
+          if (!canMemberLeaveTrip(trip, state.as).canLeave) return { ok: false, message: t(state.lang, "hideTripBlocked") }
+          const hiddenTripIds = state.hiddenTripIds.includes(trip.id)
+            ? state.hiddenTripIds
+            : [...state.hiddenTripIds, trip.id]
+          set({ state: dropTrip(state, trip.id, { hiddenTripIds }) })
+          return { ok: true, message: t(state.lang, "hidTrip").replace("{name}", trip.name) }
         },
         resetDemo: () => {
           const { state } = get()
@@ -711,13 +744,15 @@ export const useBarkadaStore = create<BarkadaStore>()(
             return { ok: false, message: t(state.lang, "whoPaid") }
           }
           const auto = active.open || isTreasurer(state, active)
+          const ts = nowTs(state)
           const expense = applyPhoto(
             {
               ...parsed.e,
               id: uid("e"),
               addedBy: state.as,
               status: (active.open || state.as === active.treasurer ? "approved" : "pending") as "approved" | "pending",
-              ts: nowTs(state),
+              ts,
+              at: ts,
             },
             draft
           )
@@ -1152,8 +1187,8 @@ export const useBarkadaStore = create<BarkadaStore>()(
           if (!isValidGcash(number)) return { ok: false, message: t(state.lang, "badGcash") }
           const active = activeTrip(state)
           if (!active || !isTreasurer(state, active)) return { ok: false, message: t(state.lang, "onlyT") }
-          if (active.members.length >= 60) return { ok: false, message: t(state.lang, "maxMembers") }
-          const taken = findTakenMember(active.members, trimmed)
+          if (activeMembers(active).length >= 60) return { ok: false, message: t(state.lang, "maxMembers") }
+          const taken = findTakenMember(activeMembers(active), trimmed)
           if (taken) {
             return {
               ok: false,
@@ -1166,11 +1201,19 @@ export const useBarkadaStore = create<BarkadaStore>()(
             state: withTrip(state, active.id, (trip) => {
               const rostered = {
                 ...trip,
-                members: [...trip.members, { id: memberId, name: trimmed, gcash: number, claimedByUid: null }],
+                members: [
+                  ...trip.members,
+                  {
+                    id: memberId,
+                    name: trimmed,
+                    gcash: number,
+                    claimedByUid: null,
+                    ...(lateComer && trip.expenses.length > 0 ? { joinedAt: ts } : {}),
+                  },
+                ],
               }
-              const next = lateComer && trip.expenses.length > 0 ? excludeFromPastBills(rostered, memberId) : rostered
               return logActivity(
-                next,
+                rostered,
                 membersAddedActivity(memberName(trip, state.as), state.as, [trimmed], memberId, ts)
               )
             }),
@@ -1186,8 +1229,8 @@ export const useBarkadaStore = create<BarkadaStore>()(
           const active = activeTrip(state)
           if (!active) return { ok: false, message: t(state.lang, "onlyT") }
           if (!isTreasurer(state, active) && state.as !== id) return { ok: false, message: t(state.lang, "onlyT") }
-          if (!active.members.some((member) => member.id === id)) return { ok: false, message: t(state.lang, "onlyT") }
-          const taken = findTakenMember(active.members, trimmed, id)
+          if (!activeMembers(active).some((member) => member.id === id)) return { ok: false, message: t(state.lang, "onlyT") }
+          const taken = findTakenMember(activeMembers(active), trimmed, id)
           if (taken) {
             return {
               ok: false,
@@ -1228,7 +1271,9 @@ export const useBarkadaStore = create<BarkadaStore>()(
                 logActivity(
                   {
                     ...trip,
-                    members: trip.members.filter((member) => member.id !== id),
+                    members: trip.members.map((member) =>
+                      member.id === id ? { ...member, leftAt: ts } : member
+                    ),
                   },
                   memberRemovedActivity(memberName(trip, state.as), state.as, name, id, ts)
                 )

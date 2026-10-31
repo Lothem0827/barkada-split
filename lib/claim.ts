@@ -1,4 +1,4 @@
-import { digits, sanitizeProfile, uid, type Member, type Profile, type Trip } from "@/lib/types"
+import { activeMembers, digits, sanitizeProfile, uid, type Member, type Profile, type Trip } from "@/lib/types"
 
 export function gcashLast4(gcash: string) {
   const only = digits(gcash).replace(/\D/g, "")
@@ -8,19 +8,6 @@ export function gcashLast4(gcash: string) {
 export function matchesGcashLast4(gcash: string, secret: string) {
   const last4 = gcashLast4(gcash)
   return last4.length === 4 && secret === last4
-}
-
-export function excludeFromPastBills(trip: Trip, memberId: string): Trip {
-  const ts = Date.now()
-  return {
-    ...trip,
-    expenses: trip.expenses.map((expense) => {
-      if (expense.method === "item") return expense
-      const ex = expense.ex.includes(memberId) ? expense.ex : [...expense.ex, memberId]
-      if (ex === expense.ex) return expense
-      return expense.method === "even" ? { ...expense, method: "exclude" as const, ex, ts } : { ...expense, ex, ts }
-    }),
-  }
 }
 
 export function seatStatus(member: Member, uidValue: string) {
@@ -43,8 +30,8 @@ export function bindSeat(
   if (memberId === "new") {
     if (!nick) return { ok: false, reason: "missing-name" }
     if (!trip.open) return { ok: false, reason: "locked" }
-    if (trip.members.length >= 60) return { ok: false, reason: "max" }
-    const match = trip.members.find((member) => member.name.trim().toLowerCase() === nick.toLowerCase())
+    if (activeMembers(trip).length >= 60) return { ok: false, reason: "max" }
+    const match = activeMembers(trip).find((member) => member.name.trim().toLowerCase() === nick.toLowerCase())
     if (match) {
       return bindSeat(trip, match.id, nextProfile, authUid, { gcash })
     }
@@ -53,14 +40,14 @@ export function bindSeat(
       ok: true,
       trip: {
         ...trip,
-        members: [...trip.members, { id, name: nick, gcash, claimedByUid: authUid || null }],
+        members: [...trip.members, { id, name: nick, gcash, claimedByUid: authUid || null, joinedAt: Date.now() }],
       },
       as: id,
       profile: { ...nextProfile, name: nick || nextProfile.name },
     }
   }
 
-  const member = trip.members.find((item) => item.id === memberId)
+  const member = activeMembers(trip).find((item) => item.id === memberId)
   if (!member) return { ok: false, reason: "missing-seat" }
   const status = seatStatus(member, authUid)
   if (status === "locked") return { ok: false, reason: "locked" }

@@ -18,6 +18,7 @@ import { t } from "@/lib/i18n"
 import { inviteUrl } from "@/lib/join-code"
 import { copyText, shareOrCopy } from "@/lib/snapshot"
 import { useBarkada } from "@/lib/store"
+import { activeMembers } from "@/lib/types"
 
 function QrSvg({ value, size, label }: { value: string; size: number; label: string }) {
   const qr = useMemo(() => (value ? encode(value, { ecc: "M", border: 2 }) : null), [value])
@@ -86,8 +87,9 @@ export function InviteBarkadaSheet({
 
   if (!trip) return null
   const live = trip
-  const waiting = live.members.filter((member) => !member.claimedByUid)
-  const joined = live.members.length - waiting.length
+  const roster = activeMembers(live)
+  const waiting = roster.filter((member) => !member.claimedByUid)
+  const joined = roster.length - waiting.length
   const activeSeat = selectedSeat && waiting.some((member) => member.id === selectedSeat) ? selectedSeat : null
   const target = activeSeat ? live.members.find((member) => member.id === activeSeat) : null
   const url = origin ? inviteUrl(live.joinCode, origin, activeSeat || undefined) : ""
@@ -192,10 +194,10 @@ export function InviteBarkadaSheet({
                   </Button>
                   <p className="mt-3 inline-flex items-center gap-1 text-sm font-semibold">
                     <UsersIcon className="size-3.5" />
-                    {t(lang, "joinedOf").replace("{joined}", String(joined)).replace("{total}", String(live.members.length))}
+                    {t(lang, "joinedOf").replace("{joined}", String(joined)).replace("{total}", String(roster.length))}
                   </p>
                   <div className="mt-1 flex flex-wrap gap-1" aria-hidden>
-                    {live.members.map((member) =>
+                    {roster.map((member) =>
                       member.claimedByUid ? (
                         <span key={member.id} title={member.name} className="size-2 rounded-full bg-emerald-500" />
                       ) : (

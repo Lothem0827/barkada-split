@@ -32,7 +32,7 @@ import { balances, fmtDate, namesList, peso, sharesOf, totalOf, wrappedStats } f
 import { t, type CopyKey } from "@/lib/i18n"
 import { isSeedTripId } from "@/lib/merge-trip"
 import { useBarkada } from "@/lib/store"
-import { canEditExpense, isTreasurer, memberName, type Expense, type Lang, type Trip } from "@/lib/types"
+import { activeMembers, canEditExpense, isTreasurer, memberName, type Expense, type Lang, type Trip } from "@/lib/types"
 
 const METHOD_KEY: Record<Expense["method"], CopyKey> = {
   even: "even",
@@ -406,7 +406,7 @@ export function GastosView({
     .sort(newest)
   const review = treasurer ? [...pending, ...proposals, ...rejected] : [...pending, ...rejected]
   const queueCount = pending.length + proposals.length
-  const waiting = trip.members.filter((member) => !member.claimedByUid)
+  const waiting = activeMembers(trip).filter((member) => !member.claimedByUid)
   const showInvite = waiting.length > 0 && !isSeedTripId(trip.id)
 
   return (

@@ -19,12 +19,12 @@ import { Card, CardAction, CardDescription, CardHeader, CardTitle } from "@/comp
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer"
 import { Item, ItemActions, ItemContent, ItemGroup, ItemTitle } from "@/components/ui/item"
 import { toast } from "@/components/ui/toast"
-import { peso, wrappedStats } from "@/lib/calc"
+import { memberCanRemove, peso, wrappedStats } from "@/lib/calc"
 import { t } from "@/lib/i18n"
 import { titleCaseName } from "@/lib/member-names"
 import { isSeedTripId } from "@/lib/merge-trip"
 import { useBarkada } from "@/lib/store"
-import { initial, memberCanRemove, type Lang, type Member } from "@/lib/types"
+import { activeMembers, initial, type Lang, type Member } from "@/lib/types"
 
 const SEEN_KEY = "barkada-seen-activity"
 const seenListeners = new Set<() => void>()
@@ -109,9 +109,10 @@ export function BarkadaView({
 
   if (!trip) return null
   const live = trip
+  const roster = activeMembers(live)
   const liveInvite = !isSeedTripId(live.id)
-  const joined = live.members.filter((member) => member.claimedByUid).length
-  const waiting = live.members.length - joined
+  const joined = roster.filter((member) => member.claimedByUid).length
+  const waiting = roster.length - joined
   const stats = wrappedStats(live, now)
 
   function notify(message: string, timeout = 1800) {
@@ -194,7 +195,7 @@ export function BarkadaView({
 
         <p className="text-sm font-semibold">{t(lang, "friendsList")}</p>
         <ItemGroup>
-          {live.members
+          {roster
             .filter((member) => member.id !== hiddenId)
             .map((member) => {
               const claimed = !!member.claimedByUid

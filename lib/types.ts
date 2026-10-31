@@ -48,6 +48,8 @@ export type Member = {
   name: string
   gcash: string
   claimedByUid?: string | null
+  joinedAt?: number
+  leftAt?: number
 }
 
 export type Item = {
@@ -89,6 +91,7 @@ export type Expense = {
   pendingEdit?: ExpenseEditProposal | null
   auditNote?: string
   ts: number
+  at?: number
   edits?: EditNote[]
   photoUrl?: string | null
   photoType?: "memory" | "receipt"
@@ -191,6 +194,7 @@ export type AppState = {
   pinHashes: Record<string, string>
   recoveryPinHash: string
   mockGoogleEmail: string
+  hiddenTripIds: string[]
 }
 
 export type ItemDraft = {
@@ -449,6 +453,7 @@ export function emptyState(lang: Lang = "en"): AppState {
     pinHashes: {},
     recoveryPinHash: "",
     mockGoogleEmail: "",
+    hiddenTripIds: [],
   }
 }
 
@@ -533,13 +538,18 @@ export function syncProfileToClaimedMembers(
   return { lakads: next, changedIds }
 }
 
+export function activeMembers(trip: Pick<Trip, "members">) {
+  return trip.members.filter((member) => !member.leftAt)
+}
+
 export function claimMember(
   trip: Trip,
   profile: Profile,
   memberId: string | "new"
 ): { trip: Trip; as: string; profile: Profile } {
   const nick = profile.name.trim().slice(0, 40)
-  const match = trip.members.find((member) => nameKey(member.name) === nameKey(nick))
+  const living = activeMembers(trip)
+  const match = living.find((member) => nameKey(member.name) === nameKey(nick))
   const targetId = memberId === "new" && match ? match.id : memberId
 
   if (targetId === "new") {
@@ -547,14 +557,17 @@ export function claimMember(
     return {
       trip: {
         ...trip,
-        members: [...trip.members, { id, name: nick || "?", gcash: profile.gcash.trim().slice(0, 30), claimedByUid: null }],
+        members: [
+          ...trip.members,
+          { id, name: nick || "?", gcash: profile.gcash.trim().slice(0, 30), claimedByUid: null, joinedAt: Date.now() },
+        ],
       },
       as: id,
       profile,
     }
   }
 
-  const member = trip.members.find((item) => item.id === targetId)
+  const member = living.find((item) => item.id === targetId)
   if (!member) return { trip, as: trip.treasurer, profile }
 
   let nextTrip = trip
@@ -588,22 +601,6 @@ export function isTreasurer(state: AppState, trip: Trip) {
   return state.as === trip.treasurer
 }
 
-export function memberCanRemove(trip: Trip, memberId: string) {
-  if (memberId === trip.treasurer) return false
-  if (trip.members.length <= 1) return false
-  if (!trip.members.some((member) => member.id === memberId)) return false
-  for (const expense of trip.expenses) {
-    if (expense.payer === memberId || expense.addedBy === memberId) return false
-    if (expense.ex.includes(memberId)) return false
-    if (expense.method !== "item") return false
-    for (const item of expense.items) {
-      const eaters = (item.eaters || []).filter((id) => trip.members.some((member) => member.id === id))
-      if (!eaters.length || eaters.includes(memberId)) return false
-    }
-  }
-  return !trip.payments.some((payment) => payment.from === memberId || payment.to === memberId)
-}
-
 export function canEditExpense(state: AppState, trip: Trip, expense: Expense) {
   return isTreasurer(state, trip) || expense.addedBy === state.as
 }
@@ -621,7 +618,7 @@ export function digits(value: string) {
 }
 
 export function newItemDraft(trip: Trip): ItemDraft {
-  return { name: "", price: "", eaters: trip.members.map((member) => member.id) }
+  return { name: "", price: "", eaters: activeMembers(trip).map((member) => member.id) }
 }
 
 export function newExpenseDraft(trip: Trip, payer: string): ExpenseDraft {

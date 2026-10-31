@@ -28,6 +28,7 @@ import { getAuthUser, isSupabaseConfigured, linkGoogle } from "@/lib/supabase"
 import {
   AVATARS,
   PERSONAS,
+  activeMembers,
   initial,
   memberName,
   type Persona,
@@ -128,7 +129,7 @@ export function ViewAsBar({ className }: { className?: string }) {
             toast.add({ title: result.message, timeout: 1800 })
           }}
         >
-          {trip.members.map((member) => (
+          {activeMembers(trip).map((member) => (
             <ToggleGroupItem key={member.id} value={member.id} className="min-h-[40px] shrink-0 snap-start px-3.5">
               {member.name}
             </ToggleGroupItem>

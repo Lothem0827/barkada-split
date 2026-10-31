@@ -1,4 +1,31 @@
-import { DAY, type Expense, type Transfer, type Trip } from "@/lib/types"
+import { DAY, activeMembers, memberName, type Expense, type SplitMethod, type Transfer, type Trip } from "@/lib/types"
+
+export type BalanceLineItem = {
+  id: string
+  title: string
+  payerId: string
+  payerName: string
+  totalBill: number
+  myShare: number
+  iPaid: number
+  netImpact: number
+  method: SplitMethod
+  isLibreForMe: boolean
+  isExcludedForMe: boolean
+}
+
+export type MemberMathBreakdown = {
+  memberId: string
+  memberName: string
+  totalPaidByMe: number
+  totalMyConsumption: number
+  confirmedSentByMe: number
+  confirmedReceivedByMe: number
+  netBalance: number
+  rawPairwiseCount: number
+  smartTransferCount: number
+  lineItems: BalanceLineItem[]
+}
 
 function emptyMap() {
   return Object.create(null) as Record<string, number>
@@ -32,8 +59,18 @@ export function distribute(total: number, weights: Record<string, number>) {
   return out
 }
 
-export function weightsOf(trip: Trip, expense: Pick<Expense, "method" | "ex" | "items">) {
-  const ids = trip.members.map((member) => member.id)
+export function weightsOf(trip: Trip, expense: Pick<Expense, "method" | "ex" | "items" | "at">) {
+  // Late joiners stay off bills created before they arrived.
+  // Departed members stay on bills created before they left.
+  const created = expense.at ?? 0
+  const present = trip.members
+    .filter((member) => {
+      if (member.joinedAt && member.joinedAt > created) return false
+      if (member.leftAt && member.leftAt <= created) return false
+      return true
+    })
+    .map((member) => member.id)
+  const ids = present.length ? present : trip.members.map((member) => member.id)
   const weights = emptyMap()
   if (expense.method === "item") {
     ;(expense.items || []).forEach((item) => {
@@ -134,6 +171,75 @@ export function transfers(trip: Trip): Transfer[] {
   return out
 }
 
+export function explainMemberBalance(trip: Trip, memberId: string): MemberMathBreakdown {
+  const onRoster = emptyMap()
+  trip.members.forEach((member) => {
+    onRoster[member.id] = 1
+  })
+  const lineItems: BalanceLineItem[] = []
+  let totalPaidByMe = 0
+  let totalMyConsumption = 0
+  let rawPairwiseCount = 0
+
+  trip.expenses
+    .filter((expense) => expense.status === "approved" && expense.payer in onRoster)
+    .slice()
+    .sort((a, b) => a.ts - b.ts)
+    .forEach((expense) => {
+      const shares = sharesOf(trip, expense)
+      const totalBill = totalOf(expense)
+      const myShare = shares[memberId] || 0
+      const iPaid = expense.payer === memberId ? totalBill : 0
+      const ex = expense.ex || []
+      const isLibreForMe = expense.method === "libre" && ex.includes(memberId)
+      const isExcludedForMe = expense.method === "exclude" && ex.includes(memberId)
+      if (expense.payer === memberId) {
+        Object.keys(shares).forEach((id) => {
+          if (id !== memberId && shares[id] > 0) rawPairwiseCount += 1
+        })
+      } else if (myShare > 0) {
+        rawPairwiseCount += 1
+      }
+      totalPaidByMe += iPaid
+      totalMyConsumption += myShare
+      if (!(iPaid > 0 || myShare > 0 || isLibreForMe)) return
+      lineItems.push({
+        id: expense.id,
+        title: expense.title,
+        payerId: expense.payer,
+        payerName: memberName(trip, expense.payer),
+        totalBill,
+        myShare,
+        iPaid,
+        netImpact: iPaid - myShare,
+        method: expense.method,
+        isLibreForMe,
+        isExcludedForMe,
+      })
+    })
+
+  let confirmedSentByMe = 0
+  let confirmedReceivedByMe = 0
+  trip.payments.forEach((payment) => {
+    if (payment.status !== "confirmed" || !(payment.from in onRoster) || !(payment.to in onRoster)) return
+    if (payment.from === memberId) confirmedSentByMe += payment.amount
+    if (payment.to === memberId) confirmedReceivedByMe += payment.amount
+  })
+
+  return {
+    memberId,
+    memberName: memberName(trip, memberId),
+    totalPaidByMe,
+    totalMyConsumption,
+    confirmedSentByMe,
+    confirmedReceivedByMe,
+    netBalance: totalPaidByMe - totalMyConsumption + confirmedSentByMe - confirmedReceivedByMe,
+    rawPairwiseCount,
+    smartTransferCount: transfers(trip).filter((row) => row.from === memberId || row.to === memberId).length,
+    lineItems,
+  }
+}
+
 export function potOf(list: Transfer[]) {
   return list.reduce((sum, row) => sum + row.pay - row.amount, 0)
 }
@@ -226,6 +332,7 @@ export function wrappedStats(trip: Trip, now: number) {
       seen[nudge.to] = (seen[nudge.to] || 0) + 1
     }
   })
+  const livingCount = activeMembers(trip).length
 
   return {
     total,
@@ -234,7 +341,7 @@ export function wrappedStats(trip: Trip, now: number) {
     start,
     end,
     perDay: days ? Math.round(total / days) : 0,
-    perHead: trip.members.length ? Math.round(total / trip.members.length) : 0,
+    perHead: livingCount ? Math.round(total / livingCount) : 0,
     confirmed: confirmed.length,
     financier: topOf(paid, "max"),
     libreMagnet: topOf(libre, "max"),
@@ -243,4 +350,64 @@ export function wrappedStats(trip: Trip, now: number) {
     tampoKind,
     seenZoner: topOf(seen, "max"),
   }
+}
+
+export type TripDeleteStatus = {
+  canDelete: boolean
+  isEmptyTrip: boolean
+  unsettledTransferCount: number
+  unsettledTotalAmount: number
+  pendingExpenseCount: number
+  unconfirmedPaymentCount: number
+}
+
+export function getTripDeleteStatus(trip: Trip): TripDeleteStatus {
+  const isEmptyTrip = trip.expenses.length === 0
+  const activeTransfers = transfers(trip)
+  const unsettledTransferCount = activeTransfers.length
+  const unsettledTotalAmount = activeTransfers.reduce((sum, transfer) => sum + transfer.amount, 0)
+  const pendingExpenseCount = trip.expenses.filter(
+    (expense) => expense.status === "pending" || Boolean(expense.pendingEdit)
+  ).length
+  const unconfirmedPaymentCount = trip.payments.filter((payment) => payment.status === "sent").length
+  const canDelete =
+    isEmptyTrip ||
+    (unsettledTransferCount === 0 && pendingExpenseCount === 0 && unconfirmedPaymentCount === 0)
+  return {
+    canDelete,
+    isEmptyTrip,
+    unsettledTransferCount,
+    unsettledTotalAmount,
+    pendingExpenseCount,
+    unconfirmedPaymentCount,
+  }
+}
+
+export function canMemberLeaveTrip(trip: Trip, memberId: string) {
+  if (!trip.members.some((member) => member.id === memberId)) {
+    return { canLeave: false, myNetBalance: 0, hasPendingItems: false }
+  }
+  const myNetBalance = balances(trip)[memberId] ?? 0
+  const hasPendingItems =
+    trip.expenses.some(
+      (expense) =>
+        (expense.payer === memberId || expense.addedBy === memberId) &&
+        (expense.status === "pending" || Boolean(expense.pendingEdit))
+    ) ||
+    trip.payments.some(
+      (payment) => (payment.from === memberId || payment.to === memberId) && payment.status === "sent"
+    )
+  return {
+    canLeave: myNetBalance === 0 && !hasPendingItems,
+    myNetBalance,
+    hasPendingItems,
+  }
+}
+
+export function memberCanRemove(trip: Trip, memberId: string) {
+  if (memberId === trip.treasurer) return false
+  const living = activeMembers(trip)
+  if (living.length <= 1) return false
+  if (!living.some((member) => member.id === memberId)) return false
+  return canMemberLeaveTrip(trip, memberId).canLeave
 }
